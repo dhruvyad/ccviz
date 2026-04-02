@@ -167,7 +167,9 @@ export default function ConversationView() {
 
       {/* Tab content */}
       <div className="p-5 max-w-7xl mx-auto">
-        {activeTab === "timeline" && <Timeline turns={data.turns} />}
+        {activeTab === "timeline" && (
+          <Timeline turns={data.turns} toolCalls={data.toolCalls} />
+        )}
         {activeTab === "tokens" && <TokenChart data={data.tokenTimeline} />}
         {activeTab === "tools" && (
           <ToolCallTable
