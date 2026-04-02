@@ -1,4 +1,4 @@
-import { useMemo, useCallback } from "react";
+import { useMemo, useCallback, useState } from "react";
 import { Group } from "@visx/group";
 import { BarStack } from "@visx/shape";
 import { scaleLinear, scaleBand, scaleOrdinal } from "@visx/scale";
@@ -48,10 +48,28 @@ const STACK_KEYS = ["userText", "toolResults", "assistantOutput"] as const;
 const STACK_COLORS = ["#00ff88", "#ffaa00", "#00aaff"];
 const STACK_LABELS = ["user text", "tool results", "assistant output"];
 
+const PIE_COLORS = [
+  "#00aaff",
+  "#00ff88",
+  "#ffaa00",
+  "#aa66ff",
+  "#ff4444",
+  "#00dddd",
+  "#ff8800",
+  "#88ff00",
+];
+
+/** Map a tool call to its category key (same logic used for pie chart) */
+function toolCategory(tc: ToolCall): string {
+  return tc.isMcp ? `mcp:${tc.name.split("__")[1]}` : tc.name;
+}
+
 export default function ContextWaterfall({
   turns,
   toolCalls,
 }: ContextWaterfallProps) {
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+
   const barData = useMemo(() => {
     return turns.map((turn) => {
       const userTextSize = new TextEncoder().encode(
@@ -80,7 +98,7 @@ export default function ContextWaterfall({
   const pieData = useMemo(() => {
     const map = new Map<string, number>();
     toolCalls.forEach((tc) => {
-      const key = tc.isMcp ? `mcp:${tc.name.split("__")[1]}` : tc.name;
+      const key = toolCategory(tc);
       map.set(key, (map.get(key) ?? 0) + tc.result.sizeBytes);
     });
     return Array.from(map.entries())
@@ -89,11 +107,17 @@ export default function ContextWaterfall({
       .slice(0, 8);
   }, [toolCalls]);
 
+  // Tool calls filtered by selected category
+  const filteredToolCalls = useMemo(() => {
+    if (!selectedCategory) return toolCalls;
+    return toolCalls.filter((tc) => toolCategory(tc) === selectedCategory);
+  }, [toolCalls, selectedCategory]);
+
   const largestResults = useMemo(() => {
-    return [...toolCalls]
+    return [...filteredToolCalls]
       .sort((a, b) => b.result.sizeBytes - a.result.sizeBytes)
       .slice(0, 10);
-  }, [toolCalls]);
+  }, [filteredToolCalls]);
 
   const suggestions = useMemo(() => {
     const items: string[] = [];
@@ -127,16 +151,16 @@ export default function ContextWaterfall({
     return items;
   }, [toolCalls]);
 
-  const PIE_COLORS = [
-    "#00aaff",
-    "#00ff88",
-    "#ffaa00",
-    "#aa66ff",
-    "#ff4444",
-    "#00dddd",
-    "#ff8800",
-    "#88ff00",
-  ];
+  const handleSelectCategory = (name: string) => {
+    setSelectedCategory((prev) => (prev === name ? null : name));
+  };
+
+  // Color for the selected category
+  const selectedCategoryColor = useMemo(() => {
+    if (!selectedCategory) return null;
+    const idx = pieData.findIndex((d) => d.name === selectedCategory);
+    return idx >= 0 ? PIE_COLORS[idx % PIE_COLORS.length] : "#555";
+  }, [selectedCategory, pieData]);
 
   return (
     <div className="space-y-6">
@@ -180,13 +204,24 @@ export default function ContextWaterfall({
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* Pie chart */}
         {pieData.length > 0 && (
-          <PieChartWithTooltip pieData={pieData} pieColors={PIE_COLORS} />
+          <PieChartWithTooltip
+            pieData={pieData}
+            pieColors={PIE_COLORS}
+            selectedCategory={selectedCategory}
+            onSelectCategory={handleSelectCategory}
+          />
         )}
 
-        {/* Top results */}
+        {/* Top results (filtered when category active) */}
         <div className="border border-term-border bg-term-surface p-4">
           <h3 className="text-xs text-term-text-dim font-mono mb-3">
             largest results
+            {selectedCategory && (
+              <span style={{ color: selectedCategoryColor ?? undefined }}>
+                {" "}
+                — {selectedCategory}
+              </span>
+            )}
           </h3>
           <table className="w-full text-[11px] font-mono">
             <thead>
@@ -214,9 +249,139 @@ export default function ContextWaterfall({
           </table>
         </div>
       </div>
+
+      {/* Deep dive panel — shown when a category is selected */}
+      {selectedCategory && (
+        <CategoryDeepDive
+          category={selectedCategory}
+          categoryColor={selectedCategoryColor ?? "#555"}
+          toolCalls={filteredToolCalls}
+          onClose={() => setSelectedCategory(null)}
+        />
+      )}
     </div>
   );
 }
+
+/* ── Deep dive panel for a selected tool category ── */
+
+function CategoryDeepDive({
+  category,
+  categoryColor,
+  toolCalls,
+  onClose,
+}: {
+  category: string;
+  categoryColor: string;
+  toolCalls: ToolCall[];
+  onClose: () => void;
+}) {
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+
+  const totalBytes = toolCalls.reduce(
+    (s, tc) => s + tc.result.sizeBytes,
+    0
+  );
+
+  // Sort by size descending
+  const sorted = useMemo(
+    () => [...toolCalls].sort((a, b) => b.result.sizeBytes - a.result.sizeBytes),
+    [toolCalls]
+  );
+
+  return (
+    <div
+      className="border bg-term-surface p-4 space-y-3"
+      style={{ borderColor: categoryColor + "66" }}
+    >
+      <div className="flex items-center justify-between">
+        <h3 className="text-xs font-mono">
+          <span style={{ color: categoryColor }}>
+            {category}
+          </span>
+          <span className="text-term-text-dim ml-2">
+            {toolCalls.length} call{toolCalls.length !== 1 ? "s" : ""} ·{" "}
+            {formatBytes(totalBytes)} total
+          </span>
+        </h3>
+        <button
+          onClick={onClose}
+          className="text-[10px] font-mono text-term-text-dim hover:text-term-text"
+        >
+          [close]
+        </button>
+      </div>
+
+      <div className="space-y-px">
+        {sorted.map((tc) => {
+          const isExpanded = expandedId === tc.id;
+          return (
+            <div key={tc.id} className="border border-term-border/40">
+              {/* Header */}
+              <button
+                onClick={() =>
+                  setExpandedId(isExpanded ? null : tc.id)
+                }
+                className="w-full text-left px-2.5 py-1.5 flex items-center gap-2 hover:bg-term-bg/50 transition-colors"
+              >
+                <span className="text-[10px] font-mono text-term-text-dim">
+                  t{tc.turnIndex + 1}
+                </span>
+                <span
+                  className="text-[10px] font-mono flex-1 truncate"
+                  style={{ color: categoryColor }}
+                >
+                  {tc.name}
+                </span>
+                <span className="text-[9px] font-mono text-term-text-dim flex-shrink-0 flex gap-2">
+                  <span
+                    className={
+                      tc.result.sizeBytes > 10240
+                        ? "text-term-yellow"
+                        : ""
+                    }
+                  >
+                    {formatBytes(tc.result.sizeBytes)}
+                  </span>
+                  <span>{isExpanded ? "▾" : "▸"}</span>
+                </span>
+              </button>
+
+              {/* Expanded detail */}
+              {isExpanded && (
+                <div className="border-t border-term-border/30 px-2.5 py-2 space-y-2 bg-term-bg">
+                  <div>
+                    <span className="text-[9px] font-mono text-term-green">
+                      input
+                    </span>
+                    <pre className="text-[10px] text-term-text font-mono bg-term-surface border border-term-border/40 p-2 mt-0.5 overflow-x-auto max-h-48 overflow-y-auto">
+                      {formatInput(tc.input)}
+                    </pre>
+                  </div>
+                  <div>
+                    <span className="text-[9px] font-mono text-term-yellow">
+                      result{" "}
+                      <span className="text-term-text-dim">
+                        ({formatBytes(tc.result.sizeBytes)})
+                      </span>
+                    </span>
+                    <pre className="text-[10px] text-term-text font-mono bg-term-surface border border-term-border/40 p-2 mt-0.5 overflow-x-auto max-h-40 overflow-y-auto whitespace-pre-wrap">
+                      {tc.result.content.length > 2000
+                        ? tc.result.content.slice(0, 2000) + "\n..."
+                        : tc.result.content || "[empty]"}
+                    </pre>
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/* ── Stacked bar chart ── */
 
 interface StackedBarTooltipData {
   turn: string;
@@ -234,7 +399,7 @@ function StackedBarChart({
   height: number;
   data: Record<string, any>[];
 }) {
-  const margin = { top: 10, right: 20, bottom: 30, left: 50 };
+  const margin = { top: 10, right: 10, bottom: 30, left: 50 };
   const innerW = width - margin.left - margin.right;
   const innerH = height - margin.top - margin.bottom;
 
@@ -370,13 +535,13 @@ function StackedBarChart({
         >
           <div>Turn {tooltipData.turn}</div>
           <div style={{ color: "#00ff88" }}>
-            userText: {tooltipData.userText}KB
+            user: {tooltipData.userText}KB
           </div>
           <div style={{ color: "#ffaa00" }}>
-            toolResults: {tooltipData.toolResults}KB
+            tools: {tooltipData.toolResults}KB
           </div>
           <div style={{ color: "#00aaff" }}>
-            assistantOutput: {tooltipData.assistantOutput}KB
+            assistant: {tooltipData.assistantOutput}KB
           </div>
         </TooltipInPortal>
       )}
@@ -384,12 +549,18 @@ function StackedBarChart({
   );
 }
 
+/* ── Interactive pie chart ── */
+
 function PieChartWithTooltip({
   pieData,
   pieColors,
+  selectedCategory,
+  onSelectCategory,
 }: {
   pieData: { name: string; value: number }[];
   pieColors: string[];
+  selectedCategory: string | null;
+  onSelectCategory: (name: string) => void;
 }) {
   const {
     tooltipData,
@@ -409,6 +580,9 @@ function PieChartWithTooltip({
     <div className="border border-term-border bg-term-surface p-4">
       <h3 className="text-xs text-term-text-dim font-mono mb-3">
         context by tool
+        <span className="text-term-text-dim/50 ml-2">
+          (click to drill down)
+        </span>
       </h3>
       <div className="flex justify-center" style={{ position: "relative" }}>
         <svg ref={containerRef} width={240} height={240}>
@@ -421,27 +595,36 @@ function PieChartWithTooltip({
               padAngle={0.02}
             >
               {(pie) =>
-                pie.arcs.map((arc, i) => (
-                  <g key={arc.data.name}>
-                    <path
-                      d={pie.path(arc) || ""}
-                      fill={pieColors[i % pieColors.length]}
-                      fillOpacity={0.5}
-                      stroke={pieColors[i % pieColors.length]}
-                      strokeWidth={0.5}
-                      onMouseMove={(e: React.MouseEvent<SVGPathElement>) => {
-                        const point = localPoint(e);
-                        if (!point) return;
-                        showTooltip({
-                          tooltipData: arc.data,
-                          tooltipLeft: point.x,
-                          tooltipTop: point.y,
-                        });
-                      }}
-                      onMouseLeave={hideTooltip}
-                    />
-                  </g>
-                ))
+                pie.arcs.map((arc, i) => {
+                  const isSelected = selectedCategory === arc.data.name;
+                  const isOther =
+                    selectedCategory != null && !isSelected;
+                  return (
+                    <g key={arc.data.name}>
+                      <path
+                        d={pie.path(arc) || ""}
+                        fill={pieColors[i % pieColors.length]}
+                        fillOpacity={isOther ? 0.15 : isSelected ? 0.8 : 0.5}
+                        stroke={pieColors[i % pieColors.length]}
+                        strokeWidth={isSelected ? 2 : 0.5}
+                        style={{ cursor: "pointer" }}
+                        onClick={() => onSelectCategory(arc.data.name)}
+                        onMouseMove={(
+                          e: React.MouseEvent<SVGPathElement>
+                        ) => {
+                          const point = localPoint(e);
+                          if (!point) return;
+                          showTooltip({
+                            tooltipData: arc.data,
+                            tooltipLeft: point.x,
+                            tooltipTop: point.y,
+                          });
+                        }}
+                        onMouseLeave={hideTooltip}
+                      />
+                    </g>
+                  );
+                })
               }
             </Pie>
           </Group>
@@ -460,25 +643,61 @@ function PieChartWithTooltip({
         )}
       </div>
       <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 mt-2 text-[10px] font-mono">
-        {pieData.map((d, i) => (
-          <div key={d.name} className="flex items-center gap-1.5">
-            <div
-              className="w-1.5 h-1.5 flex-shrink-0"
-              style={{
-                backgroundColor: pieColors[i % pieColors.length],
-              }}
-            />
-            <span className="text-term-text-dim truncate">
-              {d.name}
-            </span>
-            <span className="text-term-text-dim ml-auto flex-shrink-0">
-              {d.value}K
-            </span>
-          </div>
-        ))}
+        {pieData.map((d, i) => {
+          const isSelected = selectedCategory === d.name;
+          const isOther = selectedCategory != null && !isSelected;
+          return (
+            <button
+              key={d.name}
+              className="flex items-center gap-1.5 text-left hover:bg-term-border/20 px-0.5 -mx-0.5 transition-colors"
+              style={{ opacity: isOther ? 0.4 : 1 }}
+              onClick={() => onSelectCategory(d.name)}
+            >
+              <div
+                className="w-1.5 h-1.5 flex-shrink-0"
+                style={{
+                  backgroundColor: pieColors[i % pieColors.length],
+                }}
+              />
+              <span
+                className="truncate"
+                style={{
+                  color: isSelected
+                    ? pieColors[i % pieColors.length]
+                    : "#555",
+                }}
+              >
+                {d.name}
+              </span>
+              <span className="text-term-text-dim ml-auto flex-shrink-0">
+                {d.value}K
+              </span>
+            </button>
+          );
+        })}
       </div>
     </div>
   );
+}
+
+/* ── Helpers ── */
+
+function formatInput(input: Record<string, any>): string {
+  const entries = Object.entries(input);
+  if (entries.length === 0) return "{}";
+  const full = JSON.stringify(input, null, 2);
+  if (full.length < 500) return full;
+  const lines: string[] = [];
+  for (const [key, val] of entries) {
+    const valStr =
+      typeof val === "string"
+        ? val.length > 200
+          ? `"${val.slice(0, 200)}..."`
+          : JSON.stringify(val)
+        : JSON.stringify(val, null, 2);
+    lines.push(`${key}: ${valStr}`);
+  }
+  return lines.join("\n");
 }
 
 function formatBytes(bytes: number): string {
