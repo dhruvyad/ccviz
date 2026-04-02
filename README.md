@@ -4,6 +4,10 @@ CLI tool to visualize [Claude Code](https://docs.anthropic.com/en/docs/claude-co
 
 ![npm](https://img.shields.io/npm/v/ccviz)
 
+![Context bar chart showing per-tool context spikes per turn](.github/context-bar.webp)
+
+![Pie chart and largest results drilldown](.github/context-drilldown.webp)
+
 ## Install
 
 ```bash
