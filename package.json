@@ -1,6 +1,15 @@
 {
   "name": "ccviz",
-  "version": "0.2.0",
+  "version": "0.3.1",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/dhruvyad/ccviz.git"
+  },
+  "homepage": "https://github.com/dhruvyad/ccviz",
+  "bugs": {
+    "url": "https://github.com/dhruvyad/ccviz/issues"
+  },
+  "author": "Dhruv Yadav",
   "description": "CLI tool to visualize Claude Code conversations",
   "type": "module",
   "bin": {
