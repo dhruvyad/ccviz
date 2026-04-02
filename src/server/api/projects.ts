@@ -15,7 +15,7 @@ export function createProjectsRouter(claudeDir: string) {
       // Decode folder names: leading - and internal - become /
       const projects = await Promise.all(
         folders.map(async (encoded) => {
-          const decoded = decodePath(encoded);
+          const decoded = await decodePath(encoded);
           const projectDir = path.join(projectsDir, encoded);
           const files = await fs.readdir(projectDir);
           const conversationCount = files.filter((f) =>
@@ -36,10 +36,50 @@ export function createProjectsRouter(claudeDir: string) {
   return router;
 }
 
-function decodePath(encoded: string): string {
-  // Encoded path: -Users-dhruv-Documents-code-noclick
-  // Decoded: /Users/dhruv/Documents/code/noclick
-  return "/" + encoded.slice(1).replace(/-/g, "/");
+async function decodePath(encoded: string): Promise<string> {
+  // Encoded path: -Users-dhruvyadav-Documents-code-case-details
+  // Dashes replace /, but directory names can also contain dashes.
+  // Resolve by trying all possible splits and checking the filesystem
+  // for the FULL path (not intermediate segments, to avoid greedy mismatches).
+  const raw = encoded.slice(1); // remove leading -
+  const segments = raw.split("-");
+
+  // Try to find a valid filesystem path using dynamic programming.
+  // For each position, find all valid next segments (single or multi-dash-joined)
+  // that form a real directory component.
+  const result = await resolveSegments(segments, 0, []);
+  if (result) return "/" + result.join("/");
+
+  // Fallback: naive decode
+  return "/" + raw.replace(/-/g, "/");
+}
+
+async function resolveSegments(
+  segments: string[],
+  start: number,
+  resolved: string[]
+): Promise<string[] | null> {
+  if (start >= segments.length) return resolved;
+
+  // Try longest candidate first (prefer fewer, longer path components)
+  for (let end = segments.length; end > start; end--) {
+    const candidate = segments.slice(start, end).join("-");
+    const testPath = "/" + [...resolved, candidate].join("/");
+    try {
+      const stat = await fs.stat(testPath);
+      if (stat.isDirectory()) {
+        const result = await resolveSegments(segments, end, [
+          ...resolved,
+          candidate,
+        ]);
+        if (result) return result;
+      }
+    } catch {
+      // doesn't exist
+    }
+  }
+
+  return null;
 }
 
 interface ProjectEntry {
