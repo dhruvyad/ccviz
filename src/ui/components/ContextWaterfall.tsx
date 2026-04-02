@@ -44,22 +44,20 @@ interface ContextWaterfallProps {
   toolCalls: ToolCall[];
 }
 
-const STACK_KEYS = ["userText", "toolResults", "assistantOutput"] as const;
-const STACK_COLORS = ["#00ff88", "#ffaa00", "#00aaff"];
-const STACK_LABELS = ["user text", "tool results", "assistant output"];
+// Expanded color palette — enough for many tool types
+const TOOL_COLORS = [
+  "#ff4444", "#00aaff", "#ffaa00", "#aa66ff", "#00ff88",
+  "#00dddd", "#ff8800", "#88ff00", "#ff66aa", "#66aaff",
+  "#ddaa00", "#aa44ff", "#44ddaa", "#ff6644", "#44aadd",
+];
+const USER_COLOR = "#00ff88";
+const ASSISTANT_COLOR = "#335566";
 
 const PIE_COLORS = [
-  "#00aaff",
-  "#00ff88",
-  "#ffaa00",
-  "#aa66ff",
-  "#ff4444",
-  "#00dddd",
-  "#ff8800",
-  "#88ff00",
+  "#00aaff", "#00ff88", "#ffaa00", "#aa66ff", "#ff4444",
+  "#00dddd", "#ff8800", "#88ff00",
 ];
 
-/** Map a tool call to its category key (same logic used for pie chart) */
 function toolCategory(tc: ToolCall): string {
   return tc.isMcp ? `mcp:${tc.name.split("__")[1]}` : tc.name;
 }
@@ -69,7 +67,44 @@ export default function ContextWaterfall({
   toolCalls,
 }: ContextWaterfallProps) {
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [inspecting, setInspecting] = useState<{
+    turnIndex: number;
+    toolKey: string;
+  } | null>(null);
 
+  // Find top tool categories by total bytes for the bar chart
+  const topToolKeys = useMemo(() => {
+    const map = new Map<string, number>();
+    toolCalls.forEach((tc) => {
+      const key = toolCategory(tc);
+      map.set(key, (map.get(key) ?? 0) + tc.result.sizeBytes);
+    });
+    const sorted = Array.from(map.entries())
+      .sort((a, b) => b[1] - a[1]);
+    const top = sorted.slice(0, 8).map(([k]) => k);
+    const hasOther = sorted.length > 8;
+    return { top, hasOther };
+  }, [toolCalls]);
+
+  // All stack keys: userText, then individual tools (+ "other"), then assistantOutput
+  const stackKeys = useMemo(() => {
+    const keys = ["userText", ...topToolKeys.top];
+    if (topToolKeys.hasOther) keys.push("_other");
+    keys.push("assistantOutput");
+    return keys;
+  }, [topToolKeys]);
+
+  // Color map for stack keys
+  const stackColorMap = useMemo(() => {
+    const map: Record<string, string> = { userText: USER_COLOR, assistantOutput: ASSISTANT_COLOR };
+    topToolKeys.top.forEach((key, i) => {
+      map[key] = TOOL_COLORS[i % TOOL_COLORS.length];
+    });
+    if (topToolKeys.hasOther) map["_other"] = "#444";
+    return map;
+  }, [topToolKeys]);
+
+  // Build per-turn stacked data with individual tool breakdowns
   const barData = useMemo(() => {
     return turns.map((turn) => {
       const userTextSize = new TextEncoder().encode(
@@ -81,19 +116,41 @@ export default function ContextWaterfall({
       const turnToolCalls = toolCalls.filter(
         (tc) => tc.turnIndex === turn.index
       );
-      const toolResultSize = turnToolCalls.reduce(
-        (s, tc) => s + tc.result.sizeBytes,
-        0
-      );
 
-      return {
+      const row: Record<string, any> = {
         turn: `${turn.index + 1}`,
+        turnIndex: turn.index,
         userText: Math.round(userTextSize / 1024),
-        toolResults: Math.round(toolResultSize / 1024),
         assistantOutput: Math.round(assistantSize / 1024),
       };
+
+      // Per-tool bytes
+      const toolBytes = new Map<string, number>();
+      turnToolCalls.forEach((tc) => {
+        const key = toolCategory(tc);
+        toolBytes.set(key, (toolBytes.get(key) ?? 0) + tc.result.sizeBytes);
+      });
+
+      let otherBytes = 0;
+      for (const [key, bytes] of toolBytes) {
+        if (topToolKeys.top.includes(key)) {
+          row[key] = Math.round(bytes / 1024);
+        } else {
+          otherBytes += bytes;
+        }
+      }
+
+      // Fill missing tool keys with 0
+      for (const key of topToolKeys.top) {
+        if (!(key in row)) row[key] = 0;
+      }
+      if (topToolKeys.hasOther) {
+        row["_other"] = Math.round(otherBytes / 1024);
+      }
+
+      return row;
     });
-  }, [turns, toolCalls]);
+  }, [turns, toolCalls, topToolKeys]);
 
   const pieData = useMemo(() => {
     const map = new Map<string, number>();
@@ -107,7 +164,6 @@ export default function ContextWaterfall({
       .slice(0, 8);
   }, [toolCalls]);
 
-  // Tool calls filtered by selected category
   const filteredToolCalls = useMemo(() => {
     if (!selectedCategory) return toolCalls;
     return toolCalls.filter((tc) => toolCategory(tc) === selectedCategory);
@@ -125,9 +181,7 @@ export default function ContextWaterfall({
       (tc) => tc.result.sizeBytes > 10 * 1024
     );
     if (largeResults.length > 0) {
-      items.push(
-        `${largeResults.length} tool result(s) exceed 10KB`
-      );
+      items.push(`${largeResults.length} tool result(s) exceed 10KB`);
     }
     const callSigs = new Map<string, number>();
     toolCalls.forEach((tc) => {
@@ -138,9 +192,7 @@ export default function ContextWaterfall({
       ([, count]) => count > 1
     );
     if (dupes.length > 0) {
-      items.push(
-        `${dupes.length} repeated tool call(s) with identical results`
-      );
+      items.push(`${dupes.length} repeated tool call(s) with identical results`);
     }
     const largeReads = toolCalls.filter(
       (tc) => tc.name === "Read" && tc.result.sizeBytes > 5000
@@ -155,12 +207,36 @@ export default function ContextWaterfall({
     setSelectedCategory((prev) => (prev === name ? null : name));
   };
 
-  // Color for the selected category
   const selectedCategoryColor = useMemo(() => {
     if (!selectedCategory) return null;
     const idx = pieData.findIndex((d) => d.name === selectedCategory);
     return idx >= 0 ? PIE_COLORS[idx % PIE_COLORS.length] : "#555";
   }, [selectedCategory, pieData]);
+
+  // Tool calls for the inspected bar segment
+  const inspectedCalls = useMemo(() => {
+    if (!inspecting) return [];
+    const key = inspecting.toolKey;
+    return toolCalls
+      .filter((tc) => {
+        if (tc.turnIndex !== inspecting.turnIndex) return false;
+        if (key === "_other") {
+          return !topToolKeys.top.includes(toolCategory(tc));
+        }
+        return toolCategory(tc) === key;
+      })
+      .sort((a, b) => b.result.sizeBytes - a.result.sizeBytes);
+  }, [inspecting, toolCalls, topToolKeys]);
+
+  const handleBarClick = (turnIndex: number, toolKey: string) => {
+    // Ignore clicks on userText/assistantOutput
+    if (toolKey === "userText" || toolKey === "assistantOutput") return;
+    setInspecting((prev) =>
+      prev?.turnIndex === turnIndex && prev?.toolKey === toolKey
+        ? null
+        : { turnIndex, toolKey }
+    );
+  };
 
   return (
     <div className="space-y-6">
@@ -180,14 +256,16 @@ export default function ContextWaterfall({
       )}
 
       {/* Legend */}
-      <div className="flex gap-4 text-[10px] font-mono">
-        {STACK_KEYS.map((key, i) => (
-          <div key={key} className="flex items-center gap-1.5">
+      <div className="flex flex-wrap gap-x-3 gap-y-1 text-[10px] font-mono">
+        {stackKeys.map((key) => (
+          <div key={key} className="flex items-center gap-1">
             <div
               className="w-2 h-2"
-              style={{ backgroundColor: STACK_COLORS[i] }}
+              style={{ backgroundColor: stackColorMap[key] }}
             />
-            <span className="text-term-text-dim">{STACK_LABELS[i]}</span>
+            <span className="text-term-text-dim">
+              {key === "_other" ? "other tools" : key}
+            </span>
           </div>
         ))}
       </div>
@@ -196,13 +274,31 @@ export default function ContextWaterfall({
       <div className="border border-term-border bg-term-surface">
         <ParentSize debounceTime={100}>
           {({ width }) => (
-            <StackedBarChart width={width} height={300} data={barData} />
+            <ToolStackedBarChart
+              width={width}
+              height={300}
+              data={barData}
+              stackKeys={stackKeys}
+              colorMap={stackColorMap}
+              inspecting={inspecting}
+              onBarClick={handleBarClick}
+            />
           )}
         </ParentSize>
       </div>
 
+      {/* Inspect panel for clicked bar segment */}
+      {inspecting && inspectedCalls.length > 0 && (
+        <BarSegmentInspector
+          turnIndex={inspecting.turnIndex}
+          toolKey={inspecting.toolKey}
+          toolCalls={inspectedCalls}
+          color={stackColorMap[inspecting.toolKey] ?? "#555"}
+          onClose={() => setInspecting(null)}
+        />
+      )}
+
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {/* Pie chart */}
         {pieData.length > 0 && (
           <PieChartWithTooltip
             pieData={pieData}
@@ -212,14 +308,12 @@ export default function ContextWaterfall({
           />
         )}
 
-        {/* Top results (filtered when category active) */}
         <div className="border border-term-border bg-term-surface p-4">
           <h3 className="text-xs text-term-text-dim font-mono mb-3">
             largest results
             {selectedCategory && (
               <span style={{ color: selectedCategoryColor ?? undefined }}>
-                {" "}
-                — {selectedCategory}
+                {" "}— {selectedCategory}
               </span>
             )}
           </h3>
@@ -250,7 +344,6 @@ export default function ContextWaterfall({
         </div>
       </div>
 
-      {/* Deep dive panel — shown when a category is selected */}
       {selectedCategory && (
         <CategoryDeepDive
           category={selectedCategory}
@@ -263,141 +356,31 @@ export default function ContextWaterfall({
   );
 }
 
-/* ── Deep dive panel for a selected tool category ── */
+/* ── Per-tool stacked bar chart ── */
 
-function CategoryDeepDive({
-  category,
-  categoryColor,
-  toolCalls,
-  onClose,
-}: {
-  category: string;
-  categoryColor: string;
-  toolCalls: ToolCall[];
-  onClose: () => void;
-}) {
-  const [expandedId, setExpandedId] = useState<string | null>(null);
-
-  const totalBytes = toolCalls.reduce(
-    (s, tc) => s + tc.result.sizeBytes,
-    0
-  );
-
-  // Sort by size descending
-  const sorted = useMemo(
-    () => [...toolCalls].sort((a, b) => b.result.sizeBytes - a.result.sizeBytes),
-    [toolCalls]
-  );
-
-  return (
-    <div
-      className="border bg-term-surface p-4 space-y-3"
-      style={{ borderColor: categoryColor + "66" }}
-    >
-      <div className="flex items-center justify-between">
-        <h3 className="text-xs font-mono">
-          <span style={{ color: categoryColor }}>
-            {category}
-          </span>
-          <span className="text-term-text-dim ml-2">
-            {toolCalls.length} call{toolCalls.length !== 1 ? "s" : ""} ·{" "}
-            {formatBytes(totalBytes)} total
-          </span>
-        </h3>
-        <button
-          onClick={onClose}
-          className="text-[10px] font-mono text-term-text-dim hover:text-term-text"
-        >
-          [close]
-        </button>
-      </div>
-
-      <div className="space-y-px">
-        {sorted.map((tc) => {
-          const isExpanded = expandedId === tc.id;
-          return (
-            <div key={tc.id} className="border border-term-border/40">
-              {/* Header */}
-              <button
-                onClick={() =>
-                  setExpandedId(isExpanded ? null : tc.id)
-                }
-                className="w-full text-left px-2.5 py-1.5 flex items-center gap-2 hover:bg-term-bg/50 transition-colors"
-              >
-                <span className="text-[10px] font-mono text-term-text-dim">
-                  t{tc.turnIndex + 1}
-                </span>
-                <span
-                  className="text-[10px] font-mono flex-1 truncate"
-                  style={{ color: categoryColor }}
-                >
-                  {tc.name}
-                </span>
-                <span className="text-[9px] font-mono text-term-text-dim flex-shrink-0 flex gap-2">
-                  <span
-                    className={
-                      tc.result.sizeBytes > 10240
-                        ? "text-term-yellow"
-                        : ""
-                    }
-                  >
-                    {formatBytes(tc.result.sizeBytes)}
-                  </span>
-                  <span>{isExpanded ? "▾" : "▸"}</span>
-                </span>
-              </button>
-
-              {/* Expanded detail */}
-              {isExpanded && (
-                <div className="border-t border-term-border/30 px-2.5 py-2 space-y-2 bg-term-bg">
-                  <div>
-                    <span className="text-[9px] font-mono text-term-green">
-                      input
-                    </span>
-                    <pre className="text-[10px] text-term-text font-mono bg-term-surface border border-term-border/40 p-2 mt-0.5 overflow-x-auto max-h-48 overflow-y-auto">
-                      {formatInput(tc.input)}
-                    </pre>
-                  </div>
-                  <div>
-                    <span className="text-[9px] font-mono text-term-yellow">
-                      result{" "}
-                      <span className="text-term-text-dim">
-                        ({formatBytes(tc.result.sizeBytes)})
-                      </span>
-                    </span>
-                    <pre className="text-[10px] text-term-text font-mono bg-term-surface border border-term-border/40 p-2 mt-0.5 overflow-x-auto max-h-40 overflow-y-auto whitespace-pre-wrap">
-                      {tc.result.content.length > 2000
-                        ? tc.result.content.slice(0, 2000) + "\n..."
-                        : tc.result.content || "[empty]"}
-                    </pre>
-                  </div>
-                </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-/* ── Stacked bar chart ── */
-
-interface StackedBarTooltipData {
+interface BarTooltipData {
   turn: string;
-  userText: number;
-  toolResults: number;
-  assistantOutput: number;
+  toolKey: string;
+  value: number;
+  turnData: Record<string, any>;
 }
 
-function StackedBarChart({
+function ToolStackedBarChart({
   width,
   height,
   data,
+  stackKeys,
+  colorMap,
+  inspecting,
+  onBarClick,
 }: {
   width: number;
   height: number;
   data: Record<string, any>[];
+  stackKeys: string[];
+  colorMap: Record<string, string>;
+  inspecting: { turnIndex: number; toolKey: string } | null;
+  onBarClick: (turnIndex: number, toolKey: string) => void;
 }) {
   const margin = { top: 10, right: 10, bottom: 30, left: 50 };
   const innerW = width - margin.left - margin.right;
@@ -410,7 +393,7 @@ function StackedBarChart({
     tooltipOpen,
     showTooltip,
     hideTooltip,
-  } = useTooltip<StackedBarTooltipData>();
+  } = useTooltip<BarTooltipData>();
 
   const { containerRef, TooltipInPortal } = useTooltipInPortal({
     detectBounds: true,
@@ -423,12 +406,15 @@ function StackedBarChart({
     padding: 0.2,
   });
 
-  const maxY = Math.max(
-    ...data.map(
-      (d) =>
-        (d.userText ?? 0) + (d.toolResults ?? 0) + (d.assistantOutput ?? 0)
-    ),
-    1
+  const maxY = useMemo(
+    () =>
+      Math.max(
+        ...data.map((d) =>
+          stackKeys.reduce((s, k) => s + (d[k] ?? 0), 0)
+        ),
+        1
+      ),
+    [data, stackKeys]
   );
 
   const yScale = scaleLinear({
@@ -438,22 +424,9 @@ function StackedBarChart({
   });
 
   const colorScale = scaleOrdinal({
-    domain: STACK_KEYS as unknown as string[],
-    range: STACK_COLORS,
+    domain: stackKeys,
+    range: stackKeys.map((k) => colorMap[k] ?? "#444"),
   });
-
-  const handleBarHover = useCallback(
-    (event: React.MouseEvent<SVGRectElement>, d: Record<string, any>) => {
-      const point = localPoint(event);
-      if (!point) return;
-      showTooltip({
-        tooltipData: d as StackedBarTooltipData,
-        tooltipLeft: point.x,
-        tooltipTop: point.y,
-      });
-    },
-    [showTooltip]
-  );
 
   if (width < 100) return null;
 
@@ -469,7 +442,7 @@ function StackedBarChart({
           />
           <BarStack
             data={data}
-            keys={STACK_KEYS as unknown as string[]}
+            keys={stackKeys}
             x={(d) => d.turn}
             xScale={xScale}
             yScale={yScale}
@@ -477,24 +450,48 @@ function StackedBarChart({
           >
             {(barStacks) =>
               barStacks.map((barStack) =>
-                barStack.bars.map((bar) => (
-                  <rect
-                    key={`bar-stack-${barStack.index}-${bar.index}`}
-                    x={bar.x}
-                    y={bar.y}
-                    height={bar.height}
-                    width={bar.width}
-                    fill={bar.color}
-                    fillOpacity={0.35}
-                    stroke={bar.color}
-                    strokeWidth={0.5}
-                    strokeOpacity={0.5}
-                    onMouseMove={(e: React.MouseEvent<SVGRectElement>) =>
-                      handleBarHover(e, data[bar.index])
-                    }
-                    onMouseLeave={hideTooltip}
-                  />
-                ))
+                barStack.bars.map((bar) => {
+                  const turnData = data[bar.index];
+                  const toolKey = barStack.key;
+                  const isClickable =
+                    toolKey !== "userText" && toolKey !== "assistantOutput";
+                  const isInspected =
+                    inspecting?.turnIndex === turnData.turnIndex &&
+                    inspecting?.toolKey === toolKey;
+                  return (
+                    <rect
+                      key={`bar-${barStack.index}-${bar.index}`}
+                      x={bar.x}
+                      y={bar.y}
+                      height={bar.height}
+                      width={bar.width}
+                      fill={bar.color}
+                      fillOpacity={isInspected ? 0.9 : 0.4}
+                      stroke={isInspected ? "#fff" : bar.color}
+                      strokeWidth={isInspected ? 1.5 : 0.5}
+                      strokeOpacity={isInspected ? 1 : 0.5}
+                      style={{ cursor: isClickable ? "pointer" : "default" }}
+                      onClick={() => {
+                        if (isClickable) onBarClick(turnData.turnIndex, toolKey);
+                      }}
+                      onMouseMove={(e: React.MouseEvent<SVGRectElement>) => {
+                        const point = localPoint(e);
+                        if (!point) return;
+                        showTooltip({
+                          tooltipData: {
+                            turn: turnData.turn,
+                            toolKey,
+                            value: turnData[toolKey] ?? 0,
+                            turnData,
+                          },
+                          tooltipLeft: point.x,
+                          tooltipTop: point.y,
+                        });
+                      }}
+                      onMouseLeave={hideTooltip}
+                    />
+                  );
+                })
               )
             }
           </BarStack>
@@ -533,18 +530,230 @@ function StackedBarChart({
           offsetLeft={10}
           offsetTop={-10}
         >
-          <div>Turn {tooltipData.turn}</div>
-          <div style={{ color: "#00ff88" }}>
-            user: {tooltipData.userText}KB
+          <div>
+            Turn {tooltipData.turn} ·{" "}
+            <span style={{ color: colorMap[tooltipData.toolKey] }}>
+              {tooltipData.toolKey === "_other"
+                ? "other tools"
+                : tooltipData.toolKey}
+            </span>
           </div>
-          <div style={{ color: "#ffaa00" }}>
-            tools: {tooltipData.toolResults}KB
-          </div>
-          <div style={{ color: "#00aaff" }}>
-            assistant: {tooltipData.assistantOutput}KB
-          </div>
+          <div>{tooltipData.value}KB</div>
+          {tooltipData.toolKey !== "userText" &&
+            tooltipData.toolKey !== "assistantOutput" && (
+              <div className="text-term-text-dim" style={{ marginTop: 2, fontSize: 9 }}>
+                click to inspect
+              </div>
+            )}
         </TooltipInPortal>
       )}
+    </div>
+  );
+}
+
+/* ── Inspector for a clicked bar segment ── */
+
+function BarSegmentInspector({
+  turnIndex,
+  toolKey,
+  toolCalls,
+  color,
+  onClose,
+}: {
+  turnIndex: number;
+  toolKey: string;
+  toolCalls: ToolCall[];
+  color: string;
+  onClose: () => void;
+}) {
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const totalBytes = toolCalls.reduce((s, tc) => s + tc.result.sizeBytes, 0);
+
+  return (
+    <div
+      className="border bg-term-surface p-4 space-y-3"
+      style={{ borderColor: color + "66" }}
+    >
+      <div className="flex items-center justify-between">
+        <h3 className="text-xs font-mono">
+          <span className="text-term-text-dim">turn {turnIndex + 1} · </span>
+          <span style={{ color }}>
+            {toolKey === "_other" ? "other tools" : toolKey}
+          </span>
+          <span className="text-term-text-dim ml-2">
+            {toolCalls.length} call{toolCalls.length !== 1 ? "s" : ""} ·{" "}
+            {formatBytes(totalBytes)}
+          </span>
+        </h3>
+        <button
+          onClick={onClose}
+          className="text-[10px] font-mono text-term-text-dim hover:text-term-text"
+        >
+          [close]
+        </button>
+      </div>
+
+      <div className="space-y-px">
+        {toolCalls.map((tc) => {
+          const isExpanded = expandedId === tc.id;
+          return (
+            <div key={tc.id} className="border border-term-border/40">
+              <button
+                onClick={() => setExpandedId(isExpanded ? null : tc.id)}
+                className="w-full text-left px-2.5 py-1.5 flex items-center gap-2 hover:bg-term-bg/50 transition-colors"
+              >
+                <span
+                  className="text-[10px] font-mono flex-1 truncate"
+                  style={{ color }}
+                >
+                  {tc.name}
+                </span>
+                <span className="text-[9px] font-mono text-term-text-dim flex-shrink-0 flex gap-2">
+                  <span
+                    className={
+                      tc.result.sizeBytes > 10240 ? "text-term-yellow" : ""
+                    }
+                  >
+                    {formatBytes(tc.result.sizeBytes)}
+                  </span>
+                  <span>{isExpanded ? "▾" : "▸"}</span>
+                </span>
+              </button>
+
+              {isExpanded && (
+                <div className="border-t border-term-border/30 px-2.5 py-2 space-y-2 bg-term-bg">
+                  <div>
+                    <span className="text-[9px] font-mono text-term-green">
+                      input
+                    </span>
+                    <pre className="text-[10px] text-term-text font-mono bg-term-surface border border-term-border/40 p-2 mt-0.5 overflow-x-auto max-h-48 overflow-y-auto">
+                      {formatInput(tc.input)}
+                    </pre>
+                  </div>
+                  <div>
+                    <span className="text-[9px] font-mono text-term-yellow">
+                      result{" "}
+                      <span className="text-term-text-dim">
+                        ({formatBytes(tc.result.sizeBytes)})
+                      </span>
+                    </span>
+                    <pre className="text-[10px] text-term-text font-mono bg-term-surface border border-term-border/40 p-2 mt-0.5 overflow-x-auto max-h-40 overflow-y-auto whitespace-pre-wrap">
+                      {tc.result.content.length > 2000
+                        ? tc.result.content.slice(0, 2000) + "\n..."
+                        : tc.result.content || "[empty]"}
+                    </pre>
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/* ── Category deep dive (from pie chart) ── */
+
+function CategoryDeepDive({
+  category,
+  categoryColor,
+  toolCalls,
+  onClose,
+}: {
+  category: string;
+  categoryColor: string;
+  toolCalls: ToolCall[];
+  onClose: () => void;
+}) {
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const totalBytes = toolCalls.reduce((s, tc) => s + tc.result.sizeBytes, 0);
+  const sorted = useMemo(
+    () =>
+      [...toolCalls].sort((a, b) => b.result.sizeBytes - a.result.sizeBytes),
+    [toolCalls]
+  );
+
+  return (
+    <div
+      className="border bg-term-surface p-4 space-y-3"
+      style={{ borderColor: categoryColor + "66" }}
+    >
+      <div className="flex items-center justify-between">
+        <h3 className="text-xs font-mono">
+          <span style={{ color: categoryColor }}>{category}</span>
+          <span className="text-term-text-dim ml-2">
+            {toolCalls.length} call{toolCalls.length !== 1 ? "s" : ""} ·{" "}
+            {formatBytes(totalBytes)} total
+          </span>
+        </h3>
+        <button
+          onClick={onClose}
+          className="text-[10px] font-mono text-term-text-dim hover:text-term-text"
+        >
+          [close]
+        </button>
+      </div>
+
+      <div className="space-y-px">
+        {sorted.map((tc) => {
+          const isExpanded = expandedId === tc.id;
+          return (
+            <div key={tc.id} className="border border-term-border/40">
+              <button
+                onClick={() => setExpandedId(isExpanded ? null : tc.id)}
+                className="w-full text-left px-2.5 py-1.5 flex items-center gap-2 hover:bg-term-bg/50 transition-colors"
+              >
+                <span className="text-[10px] font-mono text-term-text-dim">
+                  t{tc.turnIndex + 1}
+                </span>
+                <span
+                  className="text-[10px] font-mono flex-1 truncate"
+                  style={{ color: categoryColor }}
+                >
+                  {tc.name}
+                </span>
+                <span className="text-[9px] font-mono text-term-text-dim flex-shrink-0 flex gap-2">
+                  <span
+                    className={
+                      tc.result.sizeBytes > 10240 ? "text-term-yellow" : ""
+                    }
+                  >
+                    {formatBytes(tc.result.sizeBytes)}
+                  </span>
+                  <span>{isExpanded ? "▾" : "▸"}</span>
+                </span>
+              </button>
+
+              {isExpanded && (
+                <div className="border-t border-term-border/30 px-2.5 py-2 space-y-2 bg-term-bg">
+                  <div>
+                    <span className="text-[9px] font-mono text-term-green">
+                      input
+                    </span>
+                    <pre className="text-[10px] text-term-text font-mono bg-term-surface border border-term-border/40 p-2 mt-0.5 overflow-x-auto max-h-48 overflow-y-auto">
+                      {formatInput(tc.input)}
+                    </pre>
+                  </div>
+                  <div>
+                    <span className="text-[9px] font-mono text-term-yellow">
+                      result{" "}
+                      <span className="text-term-text-dim">
+                        ({formatBytes(tc.result.sizeBytes)})
+                      </span>
+                    </span>
+                    <pre className="text-[10px] text-term-text font-mono bg-term-surface border border-term-border/40 p-2 mt-0.5 overflow-x-auto max-h-40 overflow-y-auto whitespace-pre-wrap">
+                      {tc.result.content.length > 2000
+                        ? tc.result.content.slice(0, 2000) + "\n..."
+                        : tc.result.content || "[empty]"}
+                    </pre>
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -580,9 +789,7 @@ function PieChartWithTooltip({
     <div className="border border-term-border bg-term-surface p-4">
       <h3 className="text-xs text-term-text-dim font-mono mb-3">
         context by tool
-        <span className="text-term-text-dim/50 ml-2">
-          (click to drill down)
-        </span>
+        <span className="text-term-text-dim/50 ml-2">(click to drill down)</span>
       </h3>
       <div className="flex justify-center" style={{ position: "relative" }}>
         <svg ref={containerRef} width={240} height={240}>
@@ -597,8 +804,7 @@ function PieChartWithTooltip({
               {(pie) =>
                 pie.arcs.map((arc, i) => {
                   const isSelected = selectedCategory === arc.data.name;
-                  const isOther =
-                    selectedCategory != null && !isSelected;
+                  const isOther = selectedCategory != null && !isSelected;
                   return (
                     <g key={arc.data.name}>
                       <path
@@ -655,9 +861,7 @@ function PieChartWithTooltip({
             >
               <div
                 className="w-1.5 h-1.5 flex-shrink-0"
-                style={{
-                  backgroundColor: pieColors[i % pieColors.length],
-                }}
+                style={{ backgroundColor: pieColors[i % pieColors.length] }}
               />
               <span
                 className="truncate"
