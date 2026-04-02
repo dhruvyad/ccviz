@@ -24,9 +24,12 @@ interface Turn {
 interface ToolCall {
   id: string;
   name: string;
-  result: { sizeBytes: number };
+  input: Record<string, any>;
+  result: { content: string; sizeBytes: number; persistedPath: string | null };
   turnIndex: number;
   durationMs: number;
+  isMcp: boolean;
+  mcpServer: string | null;
 }
 
 interface TimelineProps {
@@ -78,6 +81,17 @@ export default function Timeline({ turns, toolCalls = [] }: TimelineProps) {
     [metrics]
   );
 
+  // Group tool calls by turn
+  const toolCallsByTurn = useMemo(() => {
+    const map = new Map<number, ToolCall[]>();
+    toolCalls.forEach((tc) => {
+      const list = map.get(tc.turnIndex) ?? [];
+      list.push(tc);
+      map.set(tc.turnIndex, list);
+    });
+    return map;
+  }, [toolCalls]);
+
   return (
     <div className="space-y-1">
       {turns.map((turn, i) => (
@@ -86,6 +100,7 @@ export default function Timeline({ turns, toolCalls = [] }: TimelineProps) {
           turn={turn}
           metrics={metrics[i]}
           maxContext={maxContext}
+          turnToolCalls={toolCallsByTurn.get(turn.index) ?? []}
         />
       ))}
     </div>
@@ -96,27 +111,16 @@ function TurnCard({
   turn,
   metrics,
   maxContext,
+  turnToolCalls,
 }: {
   turn: Turn;
   metrics: TurnMetrics;
   maxContext: number;
+  turnToolCalls: ToolCall[];
 }) {
   const [expandUser, setExpandUser] = useState(false);
   const [expandAssistant, setExpandAssistant] = useState(false);
-
-  const toolColor = (name: string) => {
-    if (name.startsWith("mcp__")) return "text-term-blue";
-    if (name === "Agent") return "text-term-purple";
-    return "text-term-text-dim";
-  };
-
-  const toolBg = (name: string) => {
-    if (name.startsWith("mcp__"))
-      return "border-term-blue/30 bg-term-blue/5";
-    if (name === "Agent")
-      return "border-term-purple/30 bg-term-purple/5";
-    return "border-term-border bg-term-surface";
-  };
+  const [expandedToolId, setExpandedToolId] = useState<string | null>(null);
 
   const ratio = maxContext > 0 ? metrics.totalContextAdded / maxContext : 0;
   const barColor = getHeatColor(ratio);
@@ -165,7 +169,7 @@ function TurnCard({
           </span>
           {metrics.toolResultBytes > 0 && (
             <span className="text-[9px] font-mono text-term-text-dim flex-shrink-0">
-              ({formatK(metrics.toolResultBytes)}B tools)
+              ({formatBytes(metrics.toolResultBytes)} tools)
             </span>
           )}
         </div>
@@ -203,17 +207,84 @@ function TurnCard({
           </div>
         )}
 
-        {/* Tool calls */}
-        {turn.assistantMessage.toolCalls.length > 0 && (
-          <div className="flex flex-wrap gap-1">
-            {turn.assistantMessage.toolCalls.map((tc) => (
-              <span
-                key={tc.id}
-                className={`inline-flex items-center px-1.5 py-0.5 text-[10px] font-mono border ${toolBg(tc.name)} ${toolColor(tc.name)}`}
-              >
-                {tc.name}
-              </span>
-            ))}
+        {/* Tool calls — expandable cards */}
+        {turnToolCalls.length > 0 && (
+          <div className="space-y-1">
+            {turnToolCalls.map((tc) => {
+              const isExpanded = expandedToolId === tc.id;
+              const isMcp = tc.name.startsWith("mcp__");
+              const isAgent = tc.name === "Agent";
+              const accentColor = isMcp
+                ? "#00aaff"
+                : isAgent
+                  ? "#aa66ff"
+                  : "#555";
+
+              return (
+                <div key={tc.id} className="border border-term-border/60">
+                  {/* Tool header — always visible, clickable */}
+                  <button
+                    onClick={() =>
+                      setExpandedToolId(isExpanded ? null : tc.id)
+                    }
+                    className="w-full text-left px-2 py-1 flex items-center gap-2 hover:bg-term-surface/50 transition-colors"
+                  >
+                    <span
+                      className="text-[10px] font-mono font-semibold"
+                      style={{ color: accentColor }}
+                    >
+                      {tc.name}
+                    </span>
+                    <span className="text-[9px] font-mono text-term-text-dim ml-auto flex-shrink-0 flex gap-2">
+                      {tc.durationMs > 0 && (
+                        <span>
+                          {(tc.durationMs / 1000).toFixed(1)}s
+                        </span>
+                      )}
+                      <span
+                        className={
+                          tc.result.sizeBytes > 10240
+                            ? "text-term-yellow"
+                            : ""
+                        }
+                      >
+                        {formatBytes(tc.result.sizeBytes)}
+                      </span>
+                      <span>{isExpanded ? "▾" : "▸"}</span>
+                    </span>
+                  </button>
+
+                  {/* Expanded: input + result preview */}
+                  {isExpanded && (
+                    <div className="border-t border-term-border/40 px-2 py-2 space-y-2 bg-term-bg">
+                      {/* Input params */}
+                      <div>
+                        <span className="text-[9px] font-mono text-term-green">
+                          input
+                        </span>
+                        <pre className="text-[10px] text-term-text font-mono bg-term-surface border border-term-border/40 p-2 mt-0.5 overflow-x-auto max-h-48 overflow-y-auto">
+                          {formatInput(tc.input)}
+                        </pre>
+                      </div>
+                      {/* Result preview */}
+                      <div>
+                        <span className="text-[9px] font-mono text-term-yellow">
+                          result{" "}
+                          <span className="text-term-text-dim">
+                            ({formatBytes(tc.result.sizeBytes)})
+                          </span>
+                        </span>
+                        <pre className="text-[10px] text-term-text font-mono bg-term-surface border border-term-border/40 p-2 mt-0.5 overflow-x-auto max-h-32 overflow-y-auto whitespace-pre-wrap">
+                          {tc.result.content.length > 1500
+                            ? tc.result.content.slice(0, 1500) + "\n..."
+                            : tc.result.content || "[empty]"}
+                        </pre>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
 
@@ -253,4 +324,33 @@ function TurnCard({
       </div>
     </div>
   );
+}
+
+function formatInput(input: Record<string, any>): string {
+  // Show key params concisely: for common tools, show the most relevant fields
+  const entries = Object.entries(input);
+  if (entries.length === 0) return "{}";
+
+  // For short inputs, just show JSON
+  const full = JSON.stringify(input, null, 2);
+  if (full.length < 500) return full;
+
+  // For long inputs, show keys and truncated values
+  const lines: string[] = [];
+  for (const [key, val] of entries) {
+    const valStr =
+      typeof val === "string"
+        ? val.length > 200
+          ? `"${val.slice(0, 200)}..."`
+          : JSON.stringify(val)
+        : JSON.stringify(val, null, 2);
+    lines.push(`${key}: ${valStr}`);
+  }
+  return lines.join("\n");
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes}B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)}K`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)}M`;
 }
