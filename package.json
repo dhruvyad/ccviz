@@ -6,15 +6,23 @@
   "bin": {
     "ccviz": "dist/cli.js"
   },
-  "files": ["dist/"],
+  "files": [
+    "dist/"
+  ],
   "scripts": {
     "dev": "concurrently \"tsx watch src/cli.ts -- --dev\" \"vite --config src/ui/vite.config.ts\"",
     "build": "tsup && vite build --config src/ui/vite.config.ts",
     "start": "node dist/cli.js"
   },
-  "keywords": ["claude", "claude-code", "visualization", "mcp"],
+  "keywords": [
+    "claude",
+    "claude-code",
+    "visualization",
+    "mcp"
+  ],
   "license": "MIT",
   "devDependencies": {
+    "@tailwindcss/vite": "^4.0.0",
     "@types/express": "^5.0.0",
     "@types/node": "^22.0.0",
     "@types/react": "^19.0.0",
@@ -22,19 +30,29 @@
     "@vitejs/plugin-react": "^4.3.0",
     "concurrently": "^9.0.0",
     "tailwindcss": "^4.0.0",
-    "@tailwindcss/vite": "^4.0.0",
     "tsup": "^8.0.0",
     "tsx": "^4.0.0",
     "typescript": "^5.6.0",
     "vite": "^6.0.0"
   },
   "dependencies": {
+    "@visx/axis": "^3.12.0",
+    "@visx/curve": "^3.12.0",
+    "@visx/event": "^3.12.0",
+    "@visx/gradient": "^3.12.0",
+    "@visx/grid": "^3.12.0",
+    "@visx/group": "^3.12.0",
+    "@visx/pattern": "^3.12.0",
+    "@visx/responsive": "^3.12.0",
+    "@visx/scale": "^3.12.0",
+    "@visx/shape": "^3.12.0",
+    "@visx/text": "^3.12.0",
+    "@visx/tooltip": "^3.12.0",
     "commander": "^13.0.0",
     "express": "^5.0.0",
     "open": "^10.0.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "react-router-dom": "^7.0.0",
-    "recharts": "^2.15.0"
+    "react-router-dom": "^7.0.0"
   }
 }

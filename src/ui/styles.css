@@ -1,1 +1,48 @@
 @import "tailwindcss";
+
+@theme {
+  --color-term-bg: #000000;
+  --color-term-surface: #0a0a0a;
+  --color-term-border: #1a1a1a;
+  --color-term-border-hi: #2a2a2a;
+  --color-term-text: #b0b0b0;
+  --color-term-text-dim: #555555;
+  --color-term-text-bright: #e0e0e0;
+  --color-term-green: #00ff88;
+  --color-term-green-dim: #00aa55;
+  --color-term-blue: #00aaff;
+  --color-term-cyan: #00dddd;
+  --color-term-yellow: #ffaa00;
+  --color-term-red: #ff4444;
+  --color-term-purple: #aa66ff;
+  --color-term-orange: #ff8800;
+}
+
+body {
+  font-family: "SF Mono", "Fira Code", "JetBrains Mono", "Cascadia Code",
+    "Menlo", "Monaco", "Consolas", monospace;
+  background: #000;
+  color: #b0b0b0;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #000;
+}
+::-webkit-scrollbar-thumb {
+  background: #222;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #333;
+}
+
+/* Terminal glow effect for key elements */
+.term-glow {
+  text-shadow: 0 0 8px currentColor;
+}

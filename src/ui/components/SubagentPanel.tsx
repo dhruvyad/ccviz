@@ -32,82 +32,86 @@ export default function SubagentPanel({
 
   if (subagents.length === 0) {
     return (
-      <p className="text-gray-500 text-sm">
-        No subagents were spawned in this conversation.
+      <p className="text-term-text-dim text-xs font-mono">
+        -- no subagents spawned --
       </p>
     );
   }
 
+  const maxTokens = Math.max(
+    mainTotals.inputTokens + mainTotals.outputTokens,
+    ...subagents.map((s) => s.totals.inputTokens + s.totals.outputTokens)
+  );
+
   return (
     <div className="space-y-4">
       {/* Token comparison */}
-      <div className="bg-gray-900 border border-gray-800 rounded-lg p-4">
-        <h3 className="text-sm font-semibold text-gray-300 mb-3">
-          Token Usage Comparison
+      <div className="border border-term-border bg-term-surface p-4">
+        <h3 className="text-xs text-term-text-dim font-mono mb-3">
+          token comparison
         </h3>
         <div className="space-y-2">
           <TokenBar
-            label="Main conversation"
+            label="main"
             input={mainTotals.inputTokens}
             output={mainTotals.outputTokens}
-            maxTokens={Math.max(
-              mainTotals.inputTokens + mainTotals.outputTokens,
-              ...subagents.map(
-                (s) => s.totals.inputTokens + s.totals.outputTokens
-              )
-            )}
+            maxTokens={maxTokens}
           />
           {subagents.map((sa) => (
             <TokenBar
               key={sa.id}
-              label={`${sa.agentType}: ${sa.description.slice(0, 40)}`}
+              label={`${sa.agentType}: ${sa.description.slice(0, 30)}`}
               input={sa.totals.inputTokens}
               output={sa.totals.outputTokens}
-              maxTokens={Math.max(
-                mainTotals.inputTokens + mainTotals.outputTokens,
-                ...subagents.map(
-                  (s) => s.totals.inputTokens + s.totals.outputTokens
-                )
-              )}
+              maxTokens={maxTokens}
             />
           ))}
+        </div>
+        <div className="flex gap-4 mt-3 text-[10px] font-mono">
+          <div className="flex items-center gap-1">
+            <div className="w-2 h-2 bg-term-blue" />
+            <span className="text-term-text-dim">input</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <div className="w-2 h-2 bg-term-green" />
+            <span className="text-term-text-dim">output</span>
+          </div>
         </div>
       </div>
 
       {/* Subagent cards */}
       {subagents.map((sa) => (
-        <div
-          key={sa.id}
-          className="border border-gray-800 rounded-lg overflow-hidden"
-        >
+        <div key={sa.id} className="border border-term-border">
           <button
             onClick={() =>
               setExpandedId(expandedId === sa.id ? null : sa.id)
             }
-            className="w-full text-left p-4 hover:bg-gray-900/50 transition-colors"
+            className="w-full text-left px-3 py-2 hover:bg-term-surface transition-colors font-mono"
           >
             <div className="flex items-center justify-between">
-              <div>
-                <span className="text-xs font-semibold text-purple-400 mr-2">
-                  {sa.agentType}
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] text-term-purple">
+                  [{sa.agentType}]
                 </span>
-                <span className="text-sm text-gray-200">
+                <span className="text-xs text-term-text">
                   {sa.description}
                 </span>
               </div>
-              <div className="flex gap-4 text-xs text-gray-500">
-                <span>{sa.totals.turnCount} turns</span>
-                <span>{sa.totals.toolCalls} tool calls</span>
+              <div className="flex gap-3 text-[10px] text-term-text-dim">
+                <span>{sa.totals.turnCount}t</span>
+                <span>{sa.totals.toolCalls}tc</span>
                 <span>
-                  {(sa.totals.inputTokens + sa.totals.outputTokens).toLocaleString()}{" "}
-                  tokens
+                  {(
+                    sa.totals.inputTokens + sa.totals.outputTokens
+                  ).toLocaleString()}
+                  tok
                 </span>
                 <span>{expandedId === sa.id ? "▾" : "▸"}</span>
               </div>
             </div>
           </button>
           {expandedId === sa.id && (
-            <div className="border-t border-gray-800 p-4">
+            <div className="border-t border-term-border p-3">
               <Timeline turns={sa.turns} />
             </div>
           )}
@@ -134,21 +138,18 @@ function TokenBar({
 
   return (
     <div>
-      <div className="flex justify-between text-xs text-gray-400 mb-1">
+      <div className="flex justify-between text-[10px] font-mono text-term-text-dim mb-0.5">
         <span className="truncate max-w-xs">{label}</span>
         <span>{total.toLocaleString()}</span>
       </div>
-      <div className="h-3 bg-gray-800 rounded overflow-hidden">
-        <div
-          className="h-full flex rounded"
-          style={{ width: `${pct}%` }}
-        >
+      <div className="h-2 bg-term-border">
+        <div className="h-full flex" style={{ width: `${pct}%` }}>
           <div
-            className="bg-blue-500 h-full"
+            className="bg-term-blue h-full"
             style={{ width: `${inputPct}%` }}
           />
           <div
-            className="bg-green-500 h-full"
+            className="bg-term-green h-full"
             style={{ width: `${100 - inputPct}%` }}
           />
         </div>

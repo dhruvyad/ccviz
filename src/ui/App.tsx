@@ -4,7 +4,7 @@ import ConversationView from "./pages/ConversationView.js";
 
 export default function App() {
   return (
-    <div className="min-h-screen bg-gray-950 text-gray-100">
+    <div className="min-h-screen bg-term-bg text-term-text">
       <Routes>
         <Route path="/" element={<ProjectBrowser />} />
         <Route

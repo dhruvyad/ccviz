@@ -38,20 +38,26 @@ export default function ProjectBrowser() {
   };
 
   return (
-    <div className="flex h-screen">
+    <div className="flex h-screen bg-term-bg">
       {/* Sidebar */}
-      <div className="w-72 border-r border-gray-800 flex flex-col flex-shrink-0">
-        <div className="p-4 border-b border-gray-800">
-          <h1 className="text-lg font-bold text-gray-100">ccviz</h1>
-          <p className="text-xs text-gray-500 mt-1">
-            Claude Code Conversation Visualizer
+      <div className="w-64 border-r border-term-border flex flex-col flex-shrink-0">
+        <div className="px-3 py-3 border-b border-term-border">
+          <h1 className="text-sm text-term-green term-glow font-bold tracking-wider">
+            ccviz
+          </h1>
+          <p className="text-[10px] text-term-text-dim mt-0.5">
+            conversation visualizer
           </p>
         </div>
-        <div className="flex-1 overflow-y-auto p-2">
+        <div className="flex-1 overflow-y-auto py-1">
           {loading ? (
-            <p className="text-gray-500 text-sm p-4">Loading projects...</p>
+            <p className="text-term-text-dim text-xs p-3 font-mono">
+              loading...
+            </p>
           ) : tree.length === 0 ? (
-            <p className="text-gray-500 text-sm p-4">No projects found.</p>
+            <p className="text-term-text-dim text-xs p-3 font-mono">
+              no projects found
+            </p>
           ) : (
             <FolderTree
               tree={tree}
@@ -63,21 +69,34 @@ export default function ProjectBrowser() {
       </div>
 
       {/* Main content */}
-      <div className="flex-1 overflow-y-auto p-6">
+      <div className="flex-1 overflow-y-auto p-5">
         {!selected ? (
-          <div className="flex items-center justify-center h-full text-gray-500">
-            <p>Select a project to browse conversations</p>
+          <div className="flex items-center justify-center h-full">
+            <div className="text-center">
+              <p className="text-term-text-dim text-xs font-mono">
+                select a project to browse conversations
+              </p>
+              <p className="text-term-text-dim text-[10px] font-mono mt-1">
+                ~/. claude/projects/
+              </p>
+            </div>
           </div>
         ) : (
           <div>
-            <div className="mb-6">
-              <h2 className="text-xl font-semibold text-gray-100">
-                {selected.decoded.split("/").pop()}
+            <div className="mb-4">
+              <h2 className="text-sm text-term-text-bright font-mono">
+                <span className="text-term-green">~/</span>
+                {selected.decoded}
               </h2>
-              <p className="text-sm text-gray-500 mt-1">{selected.decoded}</p>
+              <p className="text-[10px] text-term-text-dim mt-1">
+                {conversations.length} conversation
+                {conversations.length !== 1 ? "s" : ""}
+              </p>
             </div>
             {loadingConvos ? (
-              <p className="text-gray-500">Loading conversations...</p>
+              <p className="text-term-text-dim text-xs font-mono">
+                loading...
+              </p>
             ) : (
               <ConversationList
                 conversations={conversations}

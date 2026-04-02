@@ -30,11 +30,11 @@ interface ParsedConversation {
 }
 
 const TABS = [
-  "Timeline",
-  "Token Usage",
-  "Tool Calls",
-  "Context Budget",
-  "Subagents",
+  "timeline",
+  "tokens",
+  "tools",
+  "context",
+  "subagents",
 ] as const;
 type Tab = (typeof TABS)[number];
 
@@ -44,7 +44,7 @@ export default function ConversationView() {
   const [data, setData] = useState<ParsedConversation | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<Tab>("Timeline");
+  const [activeTab, setActiveTab] = useState<Tab>("timeline");
 
   useEffect(() => {
     if (!projectPath || !sessionId) return;
@@ -68,68 +68,95 @@ export default function ConversationView() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-screen text-gray-500">
-        Parsing conversation...
+      <div className="flex items-center justify-center h-screen text-term-text-dim font-mono text-xs">
+        parsing...
       </div>
     );
   }
 
   if (error || !data) {
     return (
-      <div className="flex items-center justify-center h-screen text-red-400">
-        {error ?? "Failed to load conversation"}
+      <div className="flex items-center justify-center h-screen text-term-red font-mono text-xs">
+        {error ?? "failed to load"}
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen">
+    <div className="min-h-screen bg-term-bg">
       {/* Top bar */}
-      <div className="border-b border-gray-800 bg-gray-950 sticky top-0 z-10">
-        <div className="px-6 py-4">
-          <div className="flex items-center gap-3 mb-2">
+      <div className="border-b border-term-border bg-term-bg sticky top-0 z-10">
+        <div className="px-5 py-3">
+          <div className="flex items-center gap-3 mb-1.5">
             <button
               onClick={() => navigate("/")}
-              className="text-gray-500 hover:text-gray-300 text-sm"
+              className="text-term-text-dim hover:text-term-green text-xs font-mono"
             >
-              &larr; Back
+              cd ..
             </button>
-            <h1 className="text-lg font-semibold text-gray-100">
+            <span className="text-term-text-dim text-xs">/</span>
+            <h1 className="text-sm font-mono text-term-text-bright">
               {data.title || data.agentName || data.id.slice(0, 12)}
             </h1>
           </div>
-          <div className="flex flex-wrap gap-4 text-xs text-gray-500">
-            {data.model && <span>Model: {data.model}</span>}
-            {data.gitBranch && <span>Branch: {data.gitBranch}</span>}
-            {data.totals.durationMs != null && (
+          <div className="flex flex-wrap gap-3 text-[10px] font-mono text-term-text-dim">
+            {data.model && (
               <span>
-                Duration: {formatDuration(data.totals.durationMs)}
+                model=<span className="text-term-text">{data.model}</span>
               </span>
             )}
-            <span>{data.totals.turnCount} turns</span>
-            <span>{data.totals.toolCalls} tool calls</span>
+            {data.gitBranch && (
+              <span>
+                branch=
+                <span className="text-term-text">{data.gitBranch}</span>
+              </span>
+            )}
+            {data.totals.durationMs != null && (
+              <span>
+                time=
+                <span className="text-term-text">
+                  {formatDuration(data.totals.durationMs)}
+                </span>
+              </span>
+            )}
             <span>
-              {data.totals.inputTokens.toLocaleString()} in /{" "}
-              {data.totals.outputTokens.toLocaleString()} out
+              turns=
+              <span className="text-term-text">{data.totals.turnCount}</span>
+            </span>
+            <span>
+              tools=
+              <span className="text-term-text">{data.totals.toolCalls}</span>
+            </span>
+            <span>
+              in=
+              <span className="text-term-blue">
+                {data.totals.inputTokens.toLocaleString()}
+              </span>
+            </span>
+            <span>
+              out=
+              <span className="text-term-green">
+                {data.totals.outputTokens.toLocaleString()}
+              </span>
             </span>
           </div>
         </div>
 
         {/* Tabs */}
-        <div className="px-6 flex gap-1">
+        <div className="px-5 flex gap-px font-mono">
           {TABS.map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
-              className={`px-4 py-2 text-sm rounded-t-lg transition-colors ${
+              className={`px-3 py-1.5 text-xs transition-colors ${
                 activeTab === tab
-                  ? "bg-gray-900 text-gray-100 border-t border-x border-gray-700"
-                  : "text-gray-500 hover:text-gray-300"
+                  ? "bg-term-surface text-term-green border-t border-x border-term-border"
+                  : "text-term-text-dim hover:text-term-text"
               }`}
             >
               {tab}
-              {tab === "Subagents" && data.subagents.length > 0 && (
-                <span className="ml-1.5 text-xs text-purple-400">
+              {tab === "subagents" && data.subagents.length > 0 && (
+                <span className="ml-1 text-term-purple">
                   ({data.subagents.length})
                 </span>
               )}
@@ -139,29 +166,23 @@ export default function ConversationView() {
       </div>
 
       {/* Tab content */}
-      <div className="p-6 max-w-7xl mx-auto">
-        {activeTab === "Timeline" && <Timeline turns={data.turns} />}
-
-        {activeTab === "Token Usage" && (
-          <TokenChart data={data.tokenTimeline} />
-        )}
-
-        {activeTab === "Tool Calls" && (
+      <div className="p-5 max-w-7xl mx-auto">
+        {activeTab === "timeline" && <Timeline turns={data.turns} />}
+        {activeTab === "tokens" && <TokenChart data={data.tokenTimeline} />}
+        {activeTab === "tools" && (
           <ToolCallTable
             toolCalls={data.toolCalls}
             projectPath={projectPath!}
             sessionId={sessionId!}
           />
         )}
-
-        {activeTab === "Context Budget" && (
+        {activeTab === "context" && (
           <ContextWaterfall
             turns={data.turns}
             toolCalls={data.toolCalls}
           />
         )}
-
-        {activeTab === "Subagents" && (
+        {activeTab === "subagents" && (
           <SubagentPanel
             subagents={data.subagents}
             mainTotals={{
@@ -179,7 +200,7 @@ function formatDuration(ms: number): string {
   const secs = Math.round(ms / 1000);
   if (secs < 60) return `${secs}s`;
   const mins = Math.floor(secs / 60);
-  if (mins < 60) return `${mins}m ${secs % 60}s`;
+  if (mins < 60) return `${mins}m${secs % 60}s`;
   const hrs = Math.floor(mins / 60);
-  return `${hrs}h ${mins % 60}m`;
+  return `${hrs}h${mins % 60}m`;
 }

@@ -1,16 +1,11 @@
 import { useMemo } from "react";
-import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  PieChart,
-  Pie,
-  Cell,
-} from "recharts";
+import { Group } from "@visx/group";
+import { BarStack } from "@visx/shape";
+import { scaleLinear, scaleBand, scaleOrdinal } from "@visx/scale";
+import { AxisLeft, AxisBottom } from "@visx/axis";
+import { GridRows } from "@visx/grid";
+import { ParentSize } from "@visx/responsive";
+import { Pie } from "@visx/shape";
 
 interface ToolCall {
   id: string;
@@ -35,22 +30,14 @@ interface ContextWaterfallProps {
   toolCalls: ToolCall[];
 }
 
-const COLORS = [
-  "#3b82f6",
-  "#10b981",
-  "#f59e0b",
-  "#8b5cf6",
-  "#ef4444",
-  "#06b6d4",
-  "#ec4899",
-  "#f97316",
-];
+const STACK_KEYS = ["userText", "toolResults", "assistantOutput"] as const;
+const STACK_COLORS = ["#00ff88", "#ffaa00", "#00aaff"];
+const STACK_LABELS = ["user text", "tool results", "assistant output"];
 
 export default function ContextWaterfall({
   turns,
   toolCalls,
 }: ContextWaterfallProps) {
-  // Stacked bar: per-turn context breakdown
   const barData = useMemo(() => {
     return turns.map((turn) => {
       const userTextSize = new TextEncoder().encode(
@@ -68,7 +55,7 @@ export default function ContextWaterfall({
       );
 
       return {
-        turn: turn.index + 1,
+        turn: `${turn.index + 1}`,
         userText: Math.round(userTextSize / 1024),
         toolResults: Math.round(toolResultSize / 1024),
         assistantOutput: Math.round(assistantSize / 1024),
@@ -76,7 +63,6 @@ export default function ContextWaterfall({
     });
   }, [turns, toolCalls]);
 
-  // Pie: context by tool type
   const pieData = useMemo(() => {
     const map = new Map<string, number>();
     toolCalls.forEach((tc) => {
@@ -86,207 +72,295 @@ export default function ContextWaterfall({
     return Array.from(map.entries())
       .map(([name, bytes]) => ({ name, value: Math.round(bytes / 1024) }))
       .sort((a, b) => b.value - a.value)
-      .slice(0, 10);
+      .slice(0, 8);
   }, [toolCalls]);
 
-  // Top 10 largest tool results
   const largestResults = useMemo(() => {
     return [...toolCalls]
       .sort((a, b) => b.result.sizeBytes - a.result.sizeBytes)
       .slice(0, 10);
   }, [toolCalls]);
 
-  // Optimization suggestions
   const suggestions = useMemo(() => {
     const items: string[] = [];
-
-    // Flag results > 10KB
     const largeResults = toolCalls.filter(
       (tc) => tc.result.sizeBytes > 10 * 1024
     );
     if (largeResults.length > 0) {
       items.push(
-        `${largeResults.length} tool result(s) exceed 10KB — consider truncating or persisting to disk`
+        `${largeResults.length} tool result(s) exceed 10KB`
       );
     }
-
-    // Flag repeated identical tool calls
-    const callSignatures = new Map<string, number>();
+    const callSigs = new Map<string, number>();
     toolCalls.forEach((tc) => {
       const sig = `${tc.name}:${JSON.stringify(tc.result.content).slice(0, 100)}`;
-      callSignatures.set(sig, (callSignatures.get(sig) ?? 0) + 1);
+      callSigs.set(sig, (callSigs.get(sig) ?? 0) + 1);
     });
-    const duplicates = Array.from(callSignatures.entries()).filter(
+    const dupes = Array.from(callSigs.entries()).filter(
       ([, count]) => count > 1
     );
-    if (duplicates.length > 0) {
+    if (dupes.length > 0) {
       items.push(
-        `${duplicates.length} tool call(s) appear to be repeated with identical results`
+        `${dupes.length} repeated tool call(s) with identical results`
       );
     }
-
-    // Flag Read calls on large content
     const largeReads = toolCalls.filter(
       (tc) => tc.name === "Read" && tc.result.sizeBytes > 5000
     );
     if (largeReads.length > 0) {
-      items.push(
-        `${largeReads.length} Read call(s) returned > 5KB — consider reading specific line ranges`
-      );
+      items.push(`${largeReads.length} Read call(s) returned >5KB`);
     }
-
     return items;
   }, [toolCalls]);
 
+  const PIE_COLORS = [
+    "#00aaff",
+    "#00ff88",
+    "#ffaa00",
+    "#aa66ff",
+    "#ff4444",
+    "#00dddd",
+    "#ff8800",
+    "#88ff00",
+  ];
+
   return (
-    <div className="space-y-8">
-      {/* Suggestions */}
+    <div className="space-y-6">
       {suggestions.length > 0 && (
-        <div className="bg-yellow-900/20 border border-yellow-800/50 rounded-lg p-4">
-          <h3 className="text-sm font-semibold text-yellow-400 mb-2">
-            Optimization Suggestions
+        <div className="border border-term-yellow/30 bg-term-yellow/5 p-3">
+          <h3 className="text-xs text-term-yellow font-mono mb-1.5">
+            suggestions
           </h3>
-          <ul className="text-sm text-yellow-200/80 space-y-1">
+          <ul className="text-[11px] text-term-yellow/80 font-mono space-y-0.5">
             {suggestions.map((s, i) => (
-              <li key={i}>• {s}</li>
+              <li key={i}>
+                <span className="text-term-yellow mr-1">!</span> {s}
+              </li>
             ))}
           </ul>
         </div>
       )}
 
-      {/* Stacked bar */}
-      <div>
-        <h3 className="text-sm font-semibold text-gray-300 mb-3">
-          Context Composition Per Turn (KB)
-        </h3>
-        <ResponsiveContainer width="100%" height={300}>
-          <BarChart data={barData}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
-            <XAxis dataKey="turn" stroke="#6b7280" fontSize={12} />
-            <YAxis
-              stroke="#6b7280"
-              fontSize={12}
-              label={{
-                value: "KB",
-                angle: -90,
-                position: "insideLeft",
-                fill: "#6b7280",
-              }}
+      {/* Legend */}
+      <div className="flex gap-4 text-[10px] font-mono">
+        {STACK_KEYS.map((key, i) => (
+          <div key={key} className="flex items-center gap-1.5">
+            <div
+              className="w-2 h-2"
+              style={{ backgroundColor: STACK_COLORS[i] }}
             />
-            <Tooltip
-              contentStyle={{
-                backgroundColor: "#1f2937",
-                border: "1px solid #374151",
-                borderRadius: "8px",
-                fontSize: "12px",
-              }}
-              labelFormatter={(l) => `Turn ${l}`}
-              formatter={(value: number) => `${value} KB`}
-            />
-            <Bar
-              dataKey="userText"
-              stackId="a"
-              fill="#10b981"
-              name="User Text"
-            />
-            <Bar
-              dataKey="toolResults"
-              stackId="a"
-              fill="#f59e0b"
-              name="Tool Results"
-            />
-            <Bar
-              dataKey="assistantOutput"
-              stackId="a"
-              fill="#3b82f6"
-              name="Assistant Output"
-            />
-          </BarChart>
-        </ResponsiveContainer>
+            <span className="text-term-text-dim">{STACK_LABELS[i]}</span>
+          </div>
+        ))}
       </div>
 
-      {/* Pie chart */}
-      {pieData.length > 0 && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <div>
-            <h3 className="text-sm font-semibold text-gray-300 mb-3">
-              Context by Tool Type
-            </h3>
-            <ResponsiveContainer width="100%" height={300}>
-              <PieChart>
-                <Pie
-                  data={pieData}
-                  cx="50%"
-                  cy="50%"
-                  labelLine={false}
-                  label={({ name, percent }) =>
-                    `${name} ${(percent * 100).toFixed(0)}%`
-                  }
-                  outerRadius={100}
-                  fill="#8884d8"
-                  dataKey="value"
-                >
-                  {pieData.map((_entry, index) => (
-                    <Cell
-                      key={`cell-${index}`}
-                      fill={COLORS[index % COLORS.length]}
-                    />
-                  ))}
-                </Pie>
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: "#1f2937",
-                    border: "1px solid #374151",
-                    borderRadius: "8px",
-                    fontSize: "12px",
-                  }}
-                  formatter={(value: number) => `${value} KB`}
-                />
-              </PieChart>
-            </ResponsiveContainer>
-          </div>
+      {/* Stacked bar */}
+      <div className="border border-term-border bg-term-surface">
+        <ParentSize debounceTime={100}>
+          {({ width }) => (
+            <StackedBarChart width={width} height={300} data={barData} />
+          )}
+        </ParentSize>
+      </div>
 
-          {/* Top 10 table */}
-          <div>
-            <h3 className="text-sm font-semibold text-gray-300 mb-3">
-              Top 10 Largest Tool Results
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {/* Pie chart */}
+        {pieData.length > 0 && (
+          <div className="border border-term-border bg-term-surface p-4">
+            <h3 className="text-xs text-term-text-dim font-mono mb-3">
+              context by tool
             </h3>
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="text-gray-500 text-xs border-b border-gray-800">
-                  <th className="text-left py-2 px-3">Tool</th>
-                  <th className="text-right py-2 px-3">Size</th>
-                  <th className="text-left py-2 px-3">Persisted</th>
-                </tr>
-              </thead>
-              <tbody>
-                {largestResults.map((tc) => (
-                  <tr
-                    key={tc.id}
-                    className="border-b border-gray-800/50"
+            <div className="flex justify-center">
+              <svg width={240} height={240}>
+                <Group top={120} left={120}>
+                  <Pie
+                    data={pieData}
+                    pieValue={(d) => d.value}
+                    outerRadius={100}
+                    innerRadius={40}
+                    padAngle={0.02}
                   >
-                    <td className="py-1.5 px-3 text-gray-200 font-mono text-xs truncate max-w-48">
-                      {tc.name}
-                    </td>
-                    <td className="py-1.5 px-3 text-right text-yellow-400 text-xs">
-                      {formatBytes(tc.result.sizeBytes)}
-                    </td>
-                    <td className="py-1.5 px-3 text-xs text-gray-500">
-                      {tc.result.persistedPath ? "Yes" : "No"}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                    {(pie) =>
+                      pie.arcs.map((arc, i) => (
+                        <g key={arc.data.name}>
+                          <path
+                            d={pie.path(arc) || ""}
+                            fill={PIE_COLORS[i % PIE_COLORS.length]}
+                            fillOpacity={0.5}
+                            stroke={PIE_COLORS[i % PIE_COLORS.length]}
+                            strokeWidth={0.5}
+                          />
+                        </g>
+                      ))
+                    }
+                  </Pie>
+                </Group>
+              </svg>
+            </div>
+            <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 mt-2 text-[10px] font-mono">
+              {pieData.map((d, i) => (
+                <div key={d.name} className="flex items-center gap-1.5">
+                  <div
+                    className="w-1.5 h-1.5 flex-shrink-0"
+                    style={{
+                      backgroundColor: PIE_COLORS[i % PIE_COLORS.length],
+                    }}
+                  />
+                  <span className="text-term-text-dim truncate">
+                    {d.name}
+                  </span>
+                  <span className="text-term-text-dim ml-auto flex-shrink-0">
+                    {d.value}K
+                  </span>
+                </div>
+              ))}
+            </div>
           </div>
+        )}
+
+        {/* Top results */}
+        <div className="border border-term-border bg-term-surface p-4">
+          <h3 className="text-xs text-term-text-dim font-mono mb-3">
+            largest results
+          </h3>
+          <table className="w-full text-[11px] font-mono">
+            <thead>
+              <tr className="text-term-text-dim border-b border-term-border">
+                <th className="text-left py-1 px-2">tool</th>
+                <th className="text-right py-1 px-2">size</th>
+                <th className="text-right py-1 px-2">disk</th>
+              </tr>
+            </thead>
+            <tbody>
+              {largestResults.map((tc) => (
+                <tr key={tc.id} className="border-b border-term-border/30">
+                  <td className="py-0.5 px-2 text-term-text truncate max-w-40">
+                    {tc.name}
+                  </td>
+                  <td className="py-0.5 px-2 text-right text-term-yellow">
+                    {formatBytes(tc.result.sizeBytes)}
+                  </td>
+                  <td className="py-0.5 px-2 text-right text-term-text-dim">
+                    {tc.result.persistedPath ? "y" : "n"}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
-      )}
+      </div>
     </div>
   );
 }
 
+function StackedBarChart({
+  width,
+  height,
+  data,
+}: {
+  width: number;
+  height: number;
+  data: Record<string, any>[];
+}) {
+  const margin = { top: 10, right: 20, bottom: 30, left: 50 };
+  const innerW = width - margin.left - margin.right;
+  const innerH = height - margin.top - margin.bottom;
+
+  const xScale = scaleBand({
+    domain: data.map((d) => d.turn),
+    range: [0, innerW],
+    padding: 0.2,
+  });
+
+  const maxY = Math.max(
+    ...data.map(
+      (d) =>
+        (d.userText ?? 0) + (d.toolResults ?? 0) + (d.assistantOutput ?? 0)
+    ),
+    1
+  );
+
+  const yScale = scaleLinear({
+    domain: [0, maxY * 1.1],
+    range: [innerH, 0],
+    nice: true,
+  });
+
+  const colorScale = scaleOrdinal({
+    domain: STACK_KEYS as unknown as string[],
+    range: STACK_COLORS,
+  });
+
+  if (width < 100) return null;
+
+  return (
+    <svg width={width} height={height}>
+      <Group left={margin.left} top={margin.top}>
+        <GridRows
+          scale={yScale}
+          width={innerW}
+          stroke="#1a1a1a"
+          strokeDasharray="2,3"
+        />
+        <BarStack
+          data={data}
+          keys={STACK_KEYS as unknown as string[]}
+          x={(d) => d.turn}
+          xScale={xScale}
+          yScale={yScale}
+          color={colorScale}
+        >
+          {(barStacks) =>
+            barStacks.map((barStack) =>
+              barStack.bars.map((bar) => (
+                <rect
+                  key={`bar-stack-${barStack.index}-${bar.index}`}
+                  x={bar.x}
+                  y={bar.y}
+                  height={bar.height}
+                  width={bar.width}
+                  fill={bar.color}
+                  fillOpacity={0.35}
+                  stroke={bar.color}
+                  strokeWidth={0.5}
+                  strokeOpacity={0.5}
+                />
+              ))
+            )
+          }
+        </BarStack>
+        <AxisBottom
+          top={innerH}
+          scale={xScale}
+          stroke="#333"
+          tickStroke="#333"
+          tickLabelProps={{
+            fill: "#555",
+            fontSize: 9,
+            fontFamily: "monospace",
+            textAnchor: "middle",
+          }}
+        />
+        <AxisLeft
+          scale={yScale}
+          stroke="#333"
+          tickStroke="#333"
+          tickFormat={(v) => `${v}K`}
+          tickLabelProps={{
+            fill: "#555",
+            fontSize: 9,
+            fontFamily: "monospace",
+            textAnchor: "end",
+            dx: -4,
+          }}
+        />
+      </Group>
+    </svg>
+  );
+}
+
 function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  if (bytes < 1024) return `${bytes}B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)}K`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)}M`;
 }

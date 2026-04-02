@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 
 interface ToolCallDetailProps {
   toolCall: {
@@ -44,40 +44,38 @@ export default function ToolCallDetail({
   };
 
   return (
-    <div className="bg-gray-900/80 border-t border-gray-800 p-4 space-y-4">
-      {/* Input */}
+    <div className="bg-term-bg border-t border-term-border p-4 space-y-3 font-mono">
       <div>
-        <h4 className="text-xs font-semibold text-gray-400 mb-2">INPUT</h4>
-        <pre className="text-xs text-gray-300 bg-gray-950 rounded p-3 overflow-x-auto max-h-64 overflow-y-auto">
+        <h4 className="text-[10px] text-term-green mb-1.5">INPUT</h4>
+        <pre className="text-[11px] text-term-text bg-term-surface border border-term-border p-3 overflow-x-auto max-h-64 overflow-y-auto">
           {JSON.stringify(toolCall.input, null, 2)}
         </pre>
       </div>
 
-      {/* Result */}
       <div>
-        <h4 className="text-xs font-semibold text-gray-400 mb-2">
+        <h4 className="text-[10px] text-term-green mb-1.5">
           RESULT{" "}
-          <span className="text-gray-600 font-normal">
+          <span className="text-term-text-dim">
             ({formatBytes(toolCall.result.sizeBytes)})
           </span>
         </h4>
 
         {isPersisted && !persistedContent ? (
           <div>
-            <p className="text-xs text-gray-500 mb-2">
-              Result persisted to disk: {toolCall.result.persistedPath}
+            <p className="text-[11px] text-term-text-dim mb-1.5">
+              persisted: {toolCall.result.persistedPath}
             </p>
             <button
               onClick={loadPersistedResult}
               disabled={loadingPersisted}
-              className="text-xs text-blue-400 hover:text-blue-300"
+              className="text-[11px] text-term-blue hover:text-term-cyan"
             >
-              {loadingPersisted ? "Loading..." : "Load full result"}
+              {loadingPersisted ? "loading..." : "[load]"}
             </button>
           </div>
         ) : (
           <>
-            <pre className="text-xs text-gray-300 bg-gray-950 rounded p-3 overflow-x-auto max-h-64 overflow-y-auto whitespace-pre-wrap">
+            <pre className="text-[11px] text-term-text bg-term-surface border border-term-border p-3 overflow-x-auto max-h-64 overflow-y-auto whitespace-pre-wrap">
               {showFullResult || !isLarge
                 ? persistedContent ?? resultContent
                 : resultContent.slice(0, 2000) + "\n..."}
@@ -85,9 +83,9 @@ export default function ToolCallDetail({
             {isLarge && !showFullResult && (
               <button
                 onClick={() => setShowFullResult(true)}
-                className="text-xs text-blue-400 hover:text-blue-300 mt-1"
+                className="text-[11px] text-term-blue hover:text-term-cyan mt-1"
               >
-                Show full result ({formatBytes(toolCall.result.sizeBytes)})
+                [show full — {formatBytes(toolCall.result.sizeBytes)}]
               </button>
             )}
           </>
@@ -98,7 +96,7 @@ export default function ToolCallDetail({
 }
 
 function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  if (bytes < 1024) return `${bytes}B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)}K`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)}M`;
 }

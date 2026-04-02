@@ -27,7 +27,7 @@ interface TimelineProps {
 
 export default function Timeline({ turns }: TimelineProps) {
   return (
-    <div className="space-y-4">
+    <div className="space-y-1">
       {turns.map((turn) => (
         <TurnCard key={turn.index} turn={turn} />
       ))}
@@ -39,42 +39,57 @@ function TurnCard({ turn }: { turn: Turn }) {
   const [expandUser, setExpandUser] = useState(false);
   const [expandAssistant, setExpandAssistant] = useState(false);
 
-  const toolCallColors = (name: string) => {
-    if (name.startsWith("mcp__")) return "bg-blue-900/50 text-blue-300 border-blue-800";
-    if (name === "Agent") return "bg-purple-900/50 text-purple-300 border-purple-800";
-    return "bg-gray-800 text-gray-300 border-gray-700";
+  const toolColor = (name: string) => {
+    if (name.startsWith("mcp__")) return "text-term-blue";
+    if (name === "Agent") return "text-term-purple";
+    return "text-term-text-dim";
+  };
+
+  const toolBg = (name: string) => {
+    if (name.startsWith("mcp__"))
+      return "border-term-blue/30 bg-term-blue/5";
+    if (name === "Agent")
+      return "border-term-purple/30 bg-term-purple/5";
+    return "border-term-border bg-term-surface";
   };
 
   return (
-    <div className="border border-gray-800 rounded-lg overflow-hidden">
-      {/* Turn header */}
-      <div className="flex items-center justify-between px-4 py-2 bg-gray-900/50 border-b border-gray-800">
-        <span className="text-xs font-mono text-gray-500">
-          Turn {turn.index + 1}
+    <div className="border border-term-border hover:border-term-border-hi transition-colors">
+      {/* Header */}
+      <div className="flex items-center justify-between px-3 py-1.5 border-b border-term-border/50 bg-term-surface">
+        <span className="text-[10px] font-mono text-term-text-dim">
+          turn {turn.index + 1}
         </span>
-        <div className="flex gap-3 text-xs text-gray-500">
+        <div className="flex gap-3 text-[10px] font-mono text-term-text-dim">
           {turn.durationMs != null && (
             <span>{(turn.durationMs / 1000).toFixed(1)}s</span>
           )}
           <span>
-            {turn.assistantMessage.usage.inputTokens.toLocaleString()} in /{" "}
-            {turn.assistantMessage.usage.outputTokens.toLocaleString()} out
+            <span className="text-term-blue">
+              {turn.assistantMessage.usage.inputTokens.toLocaleString()}
+            </span>
+            {" / "}
+            <span className="text-term-green">
+              {turn.assistantMessage.usage.outputTokens.toLocaleString()}
+            </span>
           </span>
         </div>
       </div>
 
-      <div className="p-4 space-y-3">
-        {/* User message */}
+      <div className="p-3 space-y-2">
+        {/* User */}
         {turn.userMessage.content && (
           <div>
             <div className="flex items-center gap-2 mb-1">
-              <span className="text-xs font-semibold text-green-400">USER</span>
-              <span className="text-xs text-gray-600">
+              <span className="text-[10px] font-mono text-term-green">
+                $
+              </span>
+              <span className="text-[10px] font-mono text-term-text-dim">
                 {new Date(turn.userMessage.timestamp).toLocaleTimeString()}
               </span>
             </div>
             <div
-              className={`text-sm text-gray-300 whitespace-pre-wrap ${
+              className={`text-xs text-term-text whitespace-pre-wrap font-mono ${
                 !expandUser && turn.userMessage.content.length > 300
                   ? "line-clamp-3"
                   : ""
@@ -85,9 +100,9 @@ function TurnCard({ turn }: { turn: Turn }) {
             {turn.userMessage.content.length > 300 && (
               <button
                 onClick={() => setExpandUser(!expandUser)}
-                className="text-xs text-blue-400 hover:text-blue-300 mt-1"
+                className="text-[10px] text-term-blue hover:text-term-cyan font-mono mt-0.5"
               >
-                {expandUser ? "Show less" : "Show more"}
+                {expandUser ? "[less]" : "[more]"}
               </button>
             )}
           </div>
@@ -95,11 +110,11 @@ function TurnCard({ turn }: { turn: Turn }) {
 
         {/* Tool calls */}
         {turn.assistantMessage.toolCalls.length > 0 && (
-          <div className="flex flex-wrap gap-1.5">
+          <div className="flex flex-wrap gap-1">
             {turn.assistantMessage.toolCalls.map((tc) => (
               <span
                 key={tc.id}
-                className={`inline-flex items-center px-2 py-0.5 rounded text-xs border ${toolCallColors(tc.name)}`}
+                className={`inline-flex items-center px-1.5 py-0.5 text-[10px] font-mono border ${toolBg(tc.name)} ${toolColor(tc.name)}`}
               >
                 {tc.name}
               </span>
@@ -107,20 +122,23 @@ function TurnCard({ turn }: { turn: Turn }) {
           </div>
         )}
 
-        {/* Assistant message */}
+        {/* Assistant */}
         {turn.assistantMessage.content && (
           <div>
             <div className="flex items-center gap-2 mb-1">
-              <span className="text-xs font-semibold text-blue-400">
-                ASSISTANT
+              <span className="text-[10px] font-mono text-term-blue">
+                &gt;
               </span>
-              <span className="text-xs text-gray-600">
-                {new Date(turn.assistantMessage.timestamp).toLocaleTimeString()}
+              <span className="text-[10px] font-mono text-term-text-dim">
+                {new Date(
+                  turn.assistantMessage.timestamp
+                ).toLocaleTimeString()}
               </span>
             </div>
             <div
-              className={`text-sm text-gray-300 whitespace-pre-wrap ${
-                !expandAssistant && turn.assistantMessage.content.length > 500
+              className={`text-xs text-term-text whitespace-pre-wrap font-mono ${
+                !expandAssistant &&
+                turn.assistantMessage.content.length > 500
                   ? "line-clamp-5"
                   : ""
               }`}
@@ -130,9 +148,9 @@ function TurnCard({ turn }: { turn: Turn }) {
             {turn.assistantMessage.content.length > 500 && (
               <button
                 onClick={() => setExpandAssistant(!expandAssistant)}
-                className="text-xs text-blue-400 hover:text-blue-300 mt-1"
+                className="text-[10px] text-term-blue hover:text-term-cyan font-mono mt-0.5"
               >
-                {expandAssistant ? "Show less" : "Show more"}
+                {expandAssistant ? "[less]" : "[more]"}
               </button>
             )}
           </div>
