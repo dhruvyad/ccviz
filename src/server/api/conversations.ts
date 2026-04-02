@@ -4,6 +4,75 @@ import path from "path";
 import { createReadStream } from "fs";
 import readline from "readline";
 
+export function createRecentRouter(claudeDir: string) {
+  const router = Router();
+
+  // GET /api/recent — most recent conversations across all projects
+  router.get("/", async (req, res) => {
+    try {
+      const limit = Math.min(parseInt(req.query.limit as string) || 20, 50);
+      const projectsDir = path.join(claudeDir, "projects");
+      const projectFolders = await fs.readdir(projectsDir, {
+        withFileTypes: true,
+      });
+
+      const all: any[] = [];
+
+      for (const folder of projectFolders) {
+        if (!folder.isDirectory()) continue;
+        const projectDir = path.join(projectsDir, folder.name);
+        let files: string[];
+        try {
+          files = await fs.readdir(projectDir);
+        } catch {
+          continue;
+        }
+        const jsonlFiles = files.filter((f) => f.endsWith(".jsonl"));
+
+        for (const file of jsonlFiles) {
+          const filePath = path.join(projectDir, file);
+          try {
+            const stat = await fs.stat(filePath);
+            all.push({
+              sessionId: file.replace(".jsonl", ""),
+              projectEncoded: folder.name,
+              filePath,
+              sizeBytes: stat.size,
+              lastModified: stat.mtime.toISOString(),
+              mtimeMs: stat.mtimeMs,
+            });
+          } catch {
+            // skip
+          }
+        }
+      }
+
+      // Sort by mtime, take top N, then quick-scan those
+      all.sort((a, b) => b.mtimeMs - a.mtimeMs);
+      const top = all.slice(0, limit);
+
+      const results = await Promise.all(
+        top.map(async (entry) => {
+          const summary = await quickScan(entry.filePath);
+          return {
+            sessionId: entry.sessionId,
+            projectEncoded: entry.projectEncoded,
+            sizeBytes: entry.sizeBytes,
+            lastModified: entry.lastModified,
+            ...summary,
+          };
+        })
+      );
+
+      res.json(results);
+    } catch {
+      res.status(500).json({ error: "Failed to list recent conversations" });
+    }
+  });
+
+  return router;
+}
+
 export function createConversationsRouter(claudeDir: string) {
   const router = Router();
 

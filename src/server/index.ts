@@ -2,7 +2,10 @@ import express from "express";
 import path from "path";
 import { fileURLToPath } from "url";
 import { createProjectsRouter } from "./api/projects.js";
-import { createConversationsRouter } from "./api/conversations.js";
+import {
+  createConversationsRouter,
+  createRecentRouter,
+} from "./api/conversations.js";
 import { createConversationRouter } from "./api/conversation.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -19,6 +22,7 @@ export function createServer({ claudeDir, isDev }: ServerOptions) {
   app.use("/api/projects", createProjectsRouter(claudeDir));
   app.use("/api/projects", createConversationsRouter(claudeDir));
   app.use("/api/conversations", createConversationRouter(claudeDir));
+  app.use("/api/recent", createRecentRouter(claudeDir));
 
   // Serve static UI files in production
   if (!isDev) {
