@@ -64,11 +64,13 @@ export default function TokenChart({ data }: TokenChartProps) {
         <h3 className="text-xs text-term-text-dim mb-2 font-mono">
           tokens/turn
         </h3>
-        <div className="border border-term-border bg-term-surface" style={{ width: "100%" }}>
-          <ParentSize debounceTime={100}>
-            {({ width }) => (
-              <StackedAreaChart width={width} height={280} data={data} />
-            )}
+        <div className="border border-term-border bg-term-surface w-full overflow-hidden">
+          <ParentSize debounceTime={10} className="w-full">
+            {({ width }) =>
+              width > 0 ? (
+                <StackedAreaChart width={width} height={280} data={data} />
+              ) : null
+            }
           </ParentSize>
         </div>
       </div>
@@ -78,11 +80,13 @@ export default function TokenChart({ data }: TokenChartProps) {
         <h3 className="text-xs text-term-text-dim mb-2 font-mono">
           cumulative context growth
         </h3>
-        <div className="border border-term-border bg-term-surface" style={{ width: "100%" }}>
-          <ParentSize debounceTime={100}>
-            {({ width }) => (
-              <CumulativeChart width={width} height={280} data={data} />
-            )}
+        <div className="border border-term-border bg-term-surface w-full overflow-hidden">
+          <ParentSize debounceTime={10} className="w-full">
+            {({ width }) =>
+              width > 0 ? (
+                <CumulativeChart width={width} height={280} data={data} />
+              ) : null
+            }
           </ParentSize>
         </div>
       </div>
@@ -230,7 +234,7 @@ function StackedAreaChart({
 
   return (
     <div style={{ position: "relative" }}>
-      <svg ref={containerRef} width={width} height={height}>
+      <svg ref={containerRef} width={width} height={height} style={{ display: "block" }}>
         <Group left={margin.left} top={margin.top}>
           <GridRows
             scale={yScale}
@@ -418,7 +422,7 @@ function CumulativeChart({
 
   return (
     <div style={{ position: "relative" }}>
-      <svg ref={containerRef} width={width} height={height}>
+      <svg ref={containerRef} width={width} height={height} style={{ display: "block" }}>
         <Group left={margin.left} top={margin.top}>
           <GridRows
             scale={yScale}

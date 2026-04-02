@@ -201,11 +201,9 @@ export default function ProjectBrowser() {
 }
 
 function decodeProjectName(encoded: string): string {
-  // Just show the last segment(s) as a hint
-  const parts = encoded.slice(1).split("-");
-  // Take last 2-3 meaningful parts
-  const meaningful = parts.slice(-2);
-  return meaningful.join("/");
+  // Show full path decoded naively (dashes → slashes)
+  // Not 100% accurate for dirs with dashes, but fine for display
+  return encoded.slice(1).replace(/-/g, "/");
 }
 
 function formatDate(iso: string): string {
