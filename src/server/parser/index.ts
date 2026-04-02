@@ -1,5 +1,6 @@
 import { createReadStream } from "fs";
 import readline from "readline";
+import path from "path";
 import type {
   ParsedConversation,
   Turn,
@@ -7,6 +8,7 @@ import type {
   TokenDataPoint,
   SubagentSummary,
 } from "./types.js";
+import { parseSubagents } from "./subagents.js";
 
 export type { ParsedConversation };
 
@@ -259,6 +261,14 @@ export async function parseConversation(
     currentAssistantMsg = null;
   }
 
+  // Parse subagents
+  const sessionDir = path.join(
+    path.dirname(filePath),
+    path.basename(filePath, ".jsonl")
+  );
+  const parsedSubagents = await parseSubagents(sessionDir);
+  subagents.push(...parsedSubagents);
+
   // Compute totals
   const totalDuration =
     startedAt && tokenTimeline.length > 0
@@ -298,16 +308,18 @@ export async function parseConversation(
   return result;
 }
 
-function extractTextContent(content: any[] | undefined): string {
+function extractTextContent(content: any): string {
   if (!content) return "";
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return "";
   return content
     .filter((b: any) => b.type === "text")
     .map((b: any) => b.text)
     .join("\n");
 }
 
-function extractToolResults(content: any[] | undefined) {
-  if (!content) return [];
+function extractToolResults(content: any) {
+  if (!content || !Array.isArray(content)) return [];
   return content
     .filter((b: any) => b.type === "tool_result")
     .map((b: any) => ({
@@ -317,8 +329,8 @@ function extractToolResults(content: any[] | undefined) {
     }));
 }
 
-function extractToolCallRefs(content: any[] | undefined) {
-  if (!content) return [];
+function extractToolCallRefs(content: any) {
+  if (!content || !Array.isArray(content)) return [];
   return content
     .filter((b: any) => b.type === "tool_use")
     .map((b: any) => ({
