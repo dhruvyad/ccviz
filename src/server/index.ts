@@ -24,11 +24,12 @@ export function createServer({ claudeDir, isDev }: ServerOptions) {
   app.use("/api/conversations", createConversationRouter(claudeDir));
   app.use("/api/recent", createRecentRouter(claudeDir));
 
-  // Serve static UI files in production
+  // Serve static UI files in production (only for non-API routes)
   if (!isDev) {
     const uiDir = path.join(__dirname, "ui");
     app.use(express.static(uiDir));
-    app.get("/{*splat}", (_req, res) => {
+    app.get("/{*splat}", (req, res, next) => {
+      if (req.path.startsWith("/api/")) return next();
       res.sendFile(path.join(uiDir, "index.html"));
     });
   }
