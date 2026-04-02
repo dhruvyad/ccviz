@@ -72,6 +72,19 @@ const LABELS = ["Input", "Output", "Cache Create", "Cache Read"];
 
 const margin = { top: 20, right: 10, bottom: 40, left: 50 };
 
+/** Generate tick values that stay within [0, max] */
+function getTickValues(count: number, maxTicks: number): number[] {
+  if (count <= 1) return [0];
+  const max = count - 1;
+  const step = Math.ceil(max / maxTicks);
+  const ticks: number[] = [];
+  for (let i = 0; i <= max; i += step) {
+    ticks.push(i);
+  }
+  if (ticks[ticks.length - 1] !== max) ticks.push(max);
+  return ticks;
+}
+
 export default function TokenChart({ data }: TokenChartProps) {
   if (data.length === 0) {
     return (
@@ -284,6 +297,8 @@ function StackedAreaChart({
             scale={xScale}
             stroke="#333"
             tickStroke="#333"
+            numTicks={Math.min(data.length, 10)}
+            tickValues={getTickValues(data.length, 10)}
             tickLabelProps={{
               fill: "#555",
               fontSize: 10,
@@ -466,6 +481,8 @@ function CumulativeChart({
             scale={xScale}
             stroke="#333"
             tickStroke="#333"
+            numTicks={Math.min(data.length, 10)}
+            tickValues={getTickValues(data.length, 10)}
             tickLabelProps={{
               fill: "#555",
               fontSize: 10,
