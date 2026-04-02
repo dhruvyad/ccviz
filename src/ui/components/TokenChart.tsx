@@ -73,9 +73,8 @@ const LABELS = ["Input", "Output", "Cache Create", "Cache Read"];
 const margin = { top: 20, right: 10, bottom: 40, left: 50 };
 
 /** Generate tick values that stay within [0, max] */
-function getTickValues(count: number, maxTicks: number): number[] {
-  if (count <= 1) return [0];
-  const max = count - 1;
+function getTickValues(max: number, maxTicks: number): number[] {
+  if (max <= 0) return [0];
   const step = Math.ceil(max / maxTicks);
   const ticks: number[] = [];
   for (let i = 0; i <= max; i += step) {
@@ -204,13 +203,18 @@ function StackedAreaChart({
   const innerW = width - margin.left - margin.right;
   const innerH = height - margin.top - margin.bottom;
 
+  const maxTurnIndex = useMemo(
+    () => Math.max(0, ...data.map((d) => d.turnIndex)),
+    [data]
+  );
+
   const xScale = useMemo(
     () =>
       scaleLinear({
-        domain: [0, data.length - 1],
+        domain: [0, maxTurnIndex],
         range: [0, innerW],
       }),
-    [data, innerW]
+    [maxTurnIndex, innerW]
   );
 
   const maxY = useMemo(
@@ -247,15 +251,19 @@ function StackedAreaChart({
       const point = localPoint(event);
       if (!point) return;
       const x = point.x - margin.left;
-      const idx = Math.round(xScale.invert(x));
-      const clamped = Math.max(0, Math.min(data.length - 1, idx));
-      showTooltip({
-        tooltipData: data[clamped],
-        tooltipLeft: point.x,
-        tooltipTop: point.y,
-      });
+      const hoveredTurnIndex = Math.round(xScale.invert(x));
+      const clamped = Math.max(0, Math.min(maxTurnIndex, hoveredTurnIndex));
+      // Find the closest data point by turnIndex
+      const match = data.find((d) => d.turnIndex === clamped) ?? data[data.length - 1];
+      if (match) {
+        showTooltip({
+          tooltipData: match,
+          tooltipLeft: point.x,
+          tooltipTop: point.y,
+        });
+      }
     },
-    [data, xScale, showTooltip]
+    [data, xScale, maxTurnIndex, showTooltip]
   );
 
   if (width < 100) return null;
@@ -297,8 +305,7 @@ function StackedAreaChart({
             scale={xScale}
             stroke="#333"
             tickStroke="#333"
-            numTicks={Math.min(data.length, 10)}
-            tickValues={getTickValues(data.length, 10)}
+            tickValues={getTickValues(maxTurnIndex, 10)}
             tickLabelProps={{
               fill: "#555",
               fontSize: 10,
@@ -403,13 +410,18 @@ function CumulativeChart({
   const innerW = width - margin.left - margin.right;
   const innerH = height - margin.top - margin.bottom;
 
+  const maxTurnIndex = useMemo(
+    () => Math.max(0, ...data.map((d) => d.turnIndex)),
+    [data]
+  );
+
   const xScale = useMemo(
     () =>
       scaleLinear({
-        domain: [0, data.length - 1],
+        domain: [0, maxTurnIndex],
         range: [0, innerW],
       }),
-    [data, innerW]
+    [maxTurnIndex, innerW]
   );
 
   const maxY = useMemo(
@@ -437,15 +449,17 @@ function CumulativeChart({
       const point = localPoint(event);
       if (!point) return;
       const x = point.x - margin.left;
-      const idx = Math.round(xScale.invert(x));
-      const clamped = Math.max(0, Math.min(data.length - 1, idx));
+      const hoveredTurnIndex = Math.round(xScale.invert(x));
+      const clamped = Math.max(0, Math.min(maxTurnIndex, hoveredTurnIndex));
+      const match = data.find((d) => d.turnIndex === clamped) ?? data[data.length - 1];
+      if (!match) return;
       showTooltip({
-        tooltipData: data[clamped],
+        tooltipData: match,
         tooltipLeft: point.x,
         tooltipTop: point.y,
       });
     },
-    [data, xScale, showTooltip]
+    [data, xScale, maxTurnIndex, showTooltip]
   );
 
   if (width < 100) return null;
@@ -481,8 +495,7 @@ function CumulativeChart({
             scale={xScale}
             stroke="#333"
             tickStroke="#333"
-            numTicks={Math.min(data.length, 10)}
-            tickValues={getTickValues(data.length, 10)}
+            tickValues={getTickValues(maxTurnIndex, 10)}
             tickLabelProps={{
               fill: "#555",
               fontSize: 10,
