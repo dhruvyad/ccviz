@@ -1,11 +1,11 @@
-import { useMemo, useCallback, useState } from "react";
+import { useMemo, useCallback } from "react";
 import { Group } from "@visx/group";
 import { AreaStack, LinePath } from "@visx/shape";
 import { scaleLinear, scaleOrdinal } from "@visx/scale";
 import { AxisLeft, AxisBottom } from "@visx/axis";
 import { GridRows } from "@visx/grid";
 import { curveMonotoneX } from "@visx/curve";
-import { useTooltip, TooltipWithBounds } from "@visx/tooltip";
+import { useTooltip, useTooltipInPortal, defaultStyles } from "@visx/tooltip";
 import { localPoint } from "@visx/event";
 import { ParentSize } from "@visx/responsive";
 
@@ -134,6 +134,18 @@ export default function TokenChart({ data }: TokenChartProps) {
   );
 }
 
+const tooltipStyles = {
+  ...defaultStyles,
+  background: "#111",
+  border: "1px solid #333",
+  color: "#b0b0b0",
+  fontSize: 10,
+  fontFamily: "monospace",
+  padding: "6px 8px",
+  borderRadius: 0,
+  boxShadow: "0 2px 8px rgba(0,0,0,0.8)",
+};
+
 function StackedAreaChart({
   width,
   height,
@@ -151,6 +163,11 @@ function StackedAreaChart({
     showTooltip,
     hideTooltip,
   } = useTooltip<TokenDataPoint>();
+
+  const { containerRef, TooltipInPortal } = useTooltipInPortal({
+    detectBounds: true,
+    scroll: true,
+  });
 
   const innerW = width - margin.left - margin.right;
   const innerH = height - margin.top - margin.bottom;
@@ -202,7 +219,7 @@ function StackedAreaChart({
       const clamped = Math.max(0, Math.min(data.length - 1, idx));
       showTooltip({
         tooltipData: data[clamped],
-        tooltipLeft: xScale(clamped) + margin.left,
+        tooltipLeft: point.x,
         tooltipTop: point.y,
       });
     },
@@ -213,7 +230,7 @@ function StackedAreaChart({
 
   return (
     <div style={{ position: "relative" }}>
-      <svg width={width} height={height}>
+      <svg ref={containerRef} width={width} height={height}>
         <Group left={margin.left} top={margin.top}>
           <GridRows
             scale={yScale}
@@ -300,17 +317,12 @@ function StackedAreaChart({
         </Group>
       </svg>
       {tooltipOpen && tooltipData && (
-        <TooltipWithBounds
+        <TooltipInPortal
           left={tooltipLeft}
           top={tooltipTop}
-          style={{
-            background: "#111",
-            border: "1px solid #333",
-            color: "#b0b0b0",
-            fontSize: 10,
-            fontFamily: "monospace",
-            padding: "6px 8px",
-          }}
+          style={tooltipStyles}
+          offsetLeft={10}
+          offsetTop={-10}
         >
           <div>Turn {tooltipData.turnIndex + 1}</div>
           <div style={{ color: "#00aaff" }}>
@@ -325,7 +337,7 @@ function StackedAreaChart({
           <div style={{ color: "#aa66ff" }}>
             cache_r: {tooltipData.cacheReadTokens.toLocaleString()}
           </div>
-        </TooltipWithBounds>
+        </TooltipInPortal>
       )}
     </div>
   );
@@ -340,6 +352,20 @@ function CumulativeChart({
   height: number;
   data: TokenDataPoint[];
 }) {
+  const {
+    tooltipData,
+    tooltipLeft,
+    tooltipTop,
+    tooltipOpen,
+    showTooltip,
+    hideTooltip,
+  } = useTooltip<TokenDataPoint>();
+
+  const { containerRef, TooltipInPortal } = useTooltipInPortal({
+    detectBounds: true,
+    scroll: true,
+  });
+
   const innerW = width - margin.left - margin.right;
   const innerH = height - margin.top - margin.bottom;
 
@@ -372,64 +398,118 @@ function CumulativeChart({
     [maxY, innerH]
   );
 
+  const handleTooltip = useCallback(
+    (event: React.MouseEvent<SVGRectElement>) => {
+      const point = localPoint(event);
+      if (!point) return;
+      const x = point.x - margin.left;
+      const idx = Math.round(xScale.invert(x));
+      const clamped = Math.max(0, Math.min(data.length - 1, idx));
+      showTooltip({
+        tooltipData: data[clamped],
+        tooltipLeft: point.x,
+        tooltipTop: point.y,
+      });
+    },
+    [data, xScale, showTooltip]
+  );
+
   if (width < 100) return null;
 
   return (
-    <svg width={width} height={height}>
-      <Group left={margin.left} top={margin.top}>
-        <GridRows
-          scale={yScale}
-          width={innerW}
-          stroke="#1a1a1a"
-          strokeDasharray="2,3"
-        />
-        <LinePath
-          data={data}
-          x={(d) => xScale(d.turnIndex)}
-          y={(d) => yScale(d.cumulativeInputTokens)}
-          stroke="#00aaff"
-          strokeWidth={1.5}
-          curve={curveMonotoneX}
-        />
-        <LinePath
-          data={data}
-          x={(d) => xScale(d.turnIndex)}
-          y={(d) => yScale(d.cumulativeOutputTokens)}
-          stroke="#00ff88"
-          strokeWidth={1.5}
-          curve={curveMonotoneX}
-        />
-        <AxisBottom
-          top={innerH}
-          scale={xScale}
-          stroke="#333"
-          tickStroke="#333"
-          tickLabelProps={{
-            fill: "#555",
-            fontSize: 10,
-            fontFamily: "monospace",
-            textAnchor: "middle",
-          }}
-        />
-        <AxisLeft
-          scale={yScale}
-          stroke="#333"
-          tickStroke="#333"
-          tickFormat={(v) => {
-            const n = v as number;
-            if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-            if (n >= 1000) return `${(n / 1000).toFixed(0)}k`;
-            return `${n}`;
-          }}
-          tickLabelProps={{
-            fill: "#555",
-            fontSize: 10,
-            fontFamily: "monospace",
-            textAnchor: "end",
-            dx: -4,
-          }}
-        />
-      </Group>
-    </svg>
+    <div style={{ position: "relative" }}>
+      <svg ref={containerRef} width={width} height={height}>
+        <Group left={margin.left} top={margin.top}>
+          <GridRows
+            scale={yScale}
+            width={innerW}
+            stroke="#1a1a1a"
+            strokeDasharray="2,3"
+          />
+          <LinePath
+            data={data}
+            x={(d) => xScale(d.turnIndex)}
+            y={(d) => yScale(d.cumulativeInputTokens)}
+            stroke="#00aaff"
+            strokeWidth={1.5}
+            curve={curveMonotoneX}
+          />
+          <LinePath
+            data={data}
+            x={(d) => xScale(d.turnIndex)}
+            y={(d) => yScale(d.cumulativeOutputTokens)}
+            stroke="#00ff88"
+            strokeWidth={1.5}
+            curve={curveMonotoneX}
+          />
+          <AxisBottom
+            top={innerH}
+            scale={xScale}
+            stroke="#333"
+            tickStroke="#333"
+            tickLabelProps={{
+              fill: "#555",
+              fontSize: 10,
+              fontFamily: "monospace",
+              textAnchor: "middle",
+            }}
+          />
+          <AxisLeft
+            scale={yScale}
+            stroke="#333"
+            tickStroke="#333"
+            tickFormat={(v) => {
+              const n = v as number;
+              if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+              if (n >= 1000) return `${(n / 1000).toFixed(0)}k`;
+              return `${n}`;
+            }}
+            tickLabelProps={{
+              fill: "#555",
+              fontSize: 10,
+              fontFamily: "monospace",
+              textAnchor: "end",
+              dx: -4,
+            }}
+          />
+          <rect
+            width={innerW}
+            height={innerH}
+            fill="transparent"
+            onMouseMove={handleTooltip}
+            onMouseLeave={hideTooltip}
+          />
+          {tooltipOpen && tooltipData && (
+            <line
+              x1={xScale(tooltipData.turnIndex)}
+              x2={xScale(tooltipData.turnIndex)}
+              y1={0}
+              y2={innerH}
+              stroke="#00ff88"
+              strokeWidth={1}
+              strokeOpacity={0.3}
+              strokeDasharray="3,3"
+            />
+          )}
+        </Group>
+      </svg>
+      {tooltipOpen && tooltipData && (
+        <TooltipInPortal
+          left={tooltipLeft}
+          top={tooltipTop}
+          style={tooltipStyles}
+          offsetLeft={10}
+          offsetTop={-10}
+        >
+          <div>Turn {tooltipData.turnIndex + 1}</div>
+          <div style={{ color: "#00aaff" }}>
+            cum_in: {tooltipData.cumulativeInputTokens.toLocaleString()}
+          </div>
+          <div style={{ color: "#00ff88" }}>
+            cum_out: {tooltipData.cumulativeOutputTokens.toLocaleString()}
+          </div>
+        </TooltipInPortal>
+      )}
+    </div>
   );
 }
