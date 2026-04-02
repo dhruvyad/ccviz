@@ -1,4 +1,4 @@
-import { useMemo, useCallback } from "react";
+import { useMemo, useCallback, useRef, useState, useEffect } from "react";
 import { Group } from "@visx/group";
 import { AreaStack, LinePath } from "@visx/shape";
 import { scaleLinear, scaleOrdinal } from "@visx/scale";
@@ -7,7 +7,44 @@ import { GridRows } from "@visx/grid";
 import { curveMonotoneX } from "@visx/curve";
 import { useTooltip, useTooltipInPortal, defaultStyles } from "@visx/tooltip";
 import { localPoint } from "@visx/event";
-import { ParentSize } from "@visx/responsive";
+
+function useContainerWidth() {
+  const ref = useRef<HTMLDivElement>(null);
+  const [width, setWidth] = useState(0);
+  useEffect(() => {
+    if (!ref.current) return;
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        setWidth(entry.contentRect.width);
+      }
+    });
+    observer.observe(ref.current);
+    setWidth(ref.current.clientWidth);
+    return () => observer.disconnect();
+  }, []);
+  return { ref, width };
+}
+
+function ChartSection({
+  title,
+  children,
+}: {
+  title: string;
+  children: (width: number) => React.ReactNode;
+}) {
+  const { ref, width } = useContainerWidth();
+  return (
+    <div>
+      <h3 className="text-xs text-term-text-dim mb-2 font-mono">{title}</h3>
+      <div
+        ref={ref}
+        className="border border-term-border bg-term-surface"
+      >
+        {width > 0 && children(width)}
+      </div>
+    </div>
+  );
+}
 
 interface TokenDataPoint {
   turnIndex: number;
@@ -60,36 +97,14 @@ export default function TokenChart({ data }: TokenChartProps) {
       </div>
 
       {/* Stacked area */}
-      <div>
-        <h3 className="text-xs text-term-text-dim mb-2 font-mono">
-          tokens/turn
-        </h3>
-        <div className="border border-term-border bg-term-surface w-full overflow-hidden">
-          <ParentSize debounceTime={10} className="w-full">
-            {({ width }) =>
-              width > 0 ? (
-                <StackedAreaChart width={width} height={280} data={data} />
-              ) : null
-            }
-          </ParentSize>
-        </div>
-      </div>
+      <ChartSection title="tokens/turn">
+        {(width) => <StackedAreaChart width={width} height={280} data={data} />}
+      </ChartSection>
 
       {/* Cumulative */}
-      <div>
-        <h3 className="text-xs text-term-text-dim mb-2 font-mono">
-          cumulative context growth
-        </h3>
-        <div className="border border-term-border bg-term-surface w-full overflow-hidden">
-          <ParentSize debounceTime={10} className="w-full">
-            {({ width }) =>
-              width > 0 ? (
-                <CumulativeChart width={width} height={280} data={data} />
-              ) : null
-            }
-          </ParentSize>
-        </div>
-      </div>
+      <ChartSection title="cumulative context growth">
+        {(width) => <CumulativeChart width={width} height={280} data={data} />}
+      </ChartSection>
 
       {/* Table */}
       <div>
