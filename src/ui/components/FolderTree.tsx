@@ -52,29 +52,45 @@ function TreeItem({
 
   return (
     <div>
-      <button
-        onClick={() => {
-          if (isLeaf) {
-            onSelect(node.encoded!, node.fullPath!);
-          } else {
-            setExpanded(!expanded);
-          }
-        }}
+      <div
         className={`flex items-center gap-1.5 w-full px-2 py-1 rounded text-left hover:bg-gray-800 transition-colors ${
           isSelected ? "bg-gray-800 text-blue-400" : "text-gray-300"
         }`}
         style={{ paddingLeft: `${depth * 16 + 8}px` }}
       >
-        <span className="text-gray-500 w-4 text-center flex-shrink-0">
-          {hasChildren ? (expanded ? "▾" : "▸") : isLeaf ? "◆" : "·"}
-        </span>
-        <span className="truncate">{node.name}</span>
+        {hasChildren ? (
+          <button
+            onClick={() => setExpanded(!expanded)}
+            className="text-gray-500 w-4 text-center flex-shrink-0"
+          >
+            {expanded ? "▾" : "▸"}
+          </button>
+        ) : (
+          <span className="text-gray-500 w-4 text-center flex-shrink-0">
+            {isLeaf ? "◆" : "·"}
+          </span>
+        )}
+        <button
+          onClick={() => {
+            if (isLeaf) {
+              onSelect(node.encoded!, node.fullPath!);
+            } else {
+              setExpanded(!expanded);
+            }
+          }}
+          className="truncate text-left flex-1"
+        >
+          {node.name}
+        </button>
         {isLeaf && node.conversationCount != null && (
-          <span className="ml-auto text-xs text-gray-500 flex-shrink-0">
+          <span
+            className="ml-auto text-xs text-gray-500 flex-shrink-0 cursor-pointer"
+            onClick={() => onSelect(node.encoded!, node.fullPath!)}
+          >
             {node.conversationCount}
           </span>
         )}
-      </button>
+      </div>
       {expanded && hasChildren && (
         <div>
           {node.children.map((child) => (
