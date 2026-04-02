@@ -87,16 +87,21 @@ export default function ConversationView() {
       {/* Top bar */}
       <div className="border-b border-term-border bg-term-bg sticky top-0 z-10">
         <div className="px-5 py-3">
-          <div className="flex items-center gap-3 mb-1.5">
-            <button
-              onClick={() => navigate("/")}
-              className="text-term-text-dim hover:text-term-green text-xs font-mono"
-            >
-              cd ..
-            </button>
-            <span className="text-term-text-dim text-xs">/</span>
-            <h1 className="text-sm font-mono text-term-text-bright">
-              {data.title || data.agentName || data.id.slice(0, 12)}
+          <div className="mb-1.5">
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => navigate("/")}
+                className="text-term-text-dim hover:text-term-green text-xs font-mono flex-shrink-0"
+              >
+                cd ..
+              </button>
+              <span className="text-term-text-dim text-xs flex-shrink-0">/</span>
+              <span className="text-[10px] font-mono text-term-text-dim">
+                {projectPath && "/" + projectPath.slice(1).replace(/-/g, "/")}
+              </span>
+            </div>
+            <h1 className="text-sm font-mono text-term-text-bright mt-1">
+              {data.title || data.agentName || data.id}
             </h1>
           </div>
           <div className="flex flex-wrap gap-3 text-[10px] font-mono text-term-text-dim">
