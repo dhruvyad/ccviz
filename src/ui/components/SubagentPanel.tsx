@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import Timeline from "./Timeline.js";
 
 interface SubagentSummary {
@@ -135,9 +135,23 @@ function TokenBar({
   const total = input + output;
   const pct = maxTokens > 0 ? (total / maxTokens) * 100 : 0;
   const inputPct = total > 0 ? (input / total) * 100 : 0;
+  const [hover, setHover] = useState(false);
+  const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
+  const containerRef = useRef<HTMLDivElement>(null);
 
   return (
-    <div>
+    <div
+      ref={containerRef}
+      style={{ position: "relative" }}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      onMouseMove={(e) => {
+        if (containerRef.current) {
+          const rect = containerRef.current.getBoundingClientRect();
+          setMousePos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
+        }
+      }}
+    >
       <div className="flex justify-between text-[10px] font-mono text-term-text-dim mb-0.5">
         <span className="truncate max-w-xs">{label}</span>
         <span>{total.toLocaleString()}</span>
@@ -154,6 +168,34 @@ function TokenBar({
           />
         </div>
       </div>
+      {hover && (
+        <div
+          style={{
+            position: "absolute",
+            left: mousePos.x + 10,
+            top: mousePos.y - 10,
+            background: "#111",
+            border: "1px solid #333",
+            color: "#b0b0b0",
+            fontSize: 10,
+            fontFamily: "monospace",
+            padding: "6px 8px",
+            borderRadius: 0,
+            boxShadow: "0 2px 8px rgba(0,0,0,0.8)",
+            pointerEvents: "none",
+            zIndex: 50,
+            whiteSpace: "nowrap",
+          }}
+        >
+          <div>{label}</div>
+          <div style={{ color: "#00aaff" }}>
+            input: {input.toLocaleString()}
+          </div>
+          <div style={{ color: "#00ff88" }}>
+            output: {output.toLocaleString()}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

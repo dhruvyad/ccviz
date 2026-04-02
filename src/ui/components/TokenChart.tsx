@@ -33,7 +33,7 @@ const KEYS = [
 const COLORS = ["#00aaff", "#00ff88", "#ffaa00", "#aa66ff"];
 const LABELS = ["Input", "Output", "Cache Create", "Cache Read"];
 
-const margin = { top: 20, right: 20, bottom: 40, left: 60 };
+const margin = { top: 20, right: 10, bottom: 40, left: 50 };
 
 export default function TokenChart({ data }: TokenChartProps) {
   if (data.length === 0) {
@@ -64,7 +64,7 @@ export default function TokenChart({ data }: TokenChartProps) {
         <h3 className="text-xs text-term-text-dim mb-2 font-mono">
           tokens/turn
         </h3>
-        <div className="border border-term-border bg-term-surface">
+        <div className="border border-term-border bg-term-surface" style={{ width: "100%" }}>
           <ParentSize debounceTime={100}>
             {({ width }) => (
               <StackedAreaChart width={width} height={280} data={data} />
@@ -78,7 +78,7 @@ export default function TokenChart({ data }: TokenChartProps) {
         <h3 className="text-xs text-term-text-dim mb-2 font-mono">
           cumulative context growth
         </h3>
-        <div className="border border-term-border bg-term-surface">
+        <div className="border border-term-border bg-term-surface" style={{ width: "100%" }}>
           <ParentSize debounceTime={100}>
             {({ width }) => (
               <CumulativeChart width={width} height={280} data={data} />

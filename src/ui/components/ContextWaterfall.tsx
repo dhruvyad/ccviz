@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useCallback } from "react";
 import { Group } from "@visx/group";
 import { BarStack } from "@visx/shape";
 import { scaleLinear, scaleBand, scaleOrdinal } from "@visx/scale";
@@ -6,6 +6,20 @@ import { AxisLeft, AxisBottom } from "@visx/axis";
 import { GridRows } from "@visx/grid";
 import { ParentSize } from "@visx/responsive";
 import { Pie } from "@visx/shape";
+import { useTooltip, useTooltipInPortal, defaultStyles } from "@visx/tooltip";
+import { localPoint } from "@visx/event";
+
+const tooltipStyles = {
+  ...defaultStyles,
+  background: "#111",
+  border: "1px solid #333",
+  color: "#b0b0b0",
+  fontSize: 10,
+  fontFamily: "monospace",
+  padding: "6px 8px",
+  borderRadius: 0,
+  boxShadow: "0 2px 8px rgba(0,0,0,0.8)",
+} as const;
 
 interface ToolCall {
   id: string;
@@ -166,56 +180,7 @@ export default function ContextWaterfall({
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* Pie chart */}
         {pieData.length > 0 && (
-          <div className="border border-term-border bg-term-surface p-4">
-            <h3 className="text-xs text-term-text-dim font-mono mb-3">
-              context by tool
-            </h3>
-            <div className="flex justify-center">
-              <svg width={240} height={240}>
-                <Group top={120} left={120}>
-                  <Pie
-                    data={pieData}
-                    pieValue={(d) => d.value}
-                    outerRadius={100}
-                    innerRadius={40}
-                    padAngle={0.02}
-                  >
-                    {(pie) =>
-                      pie.arcs.map((arc, i) => (
-                        <g key={arc.data.name}>
-                          <path
-                            d={pie.path(arc) || ""}
-                            fill={PIE_COLORS[i % PIE_COLORS.length]}
-                            fillOpacity={0.5}
-                            stroke={PIE_COLORS[i % PIE_COLORS.length]}
-                            strokeWidth={0.5}
-                          />
-                        </g>
-                      ))
-                    }
-                  </Pie>
-                </Group>
-              </svg>
-            </div>
-            <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 mt-2 text-[10px] font-mono">
-              {pieData.map((d, i) => (
-                <div key={d.name} className="flex items-center gap-1.5">
-                  <div
-                    className="w-1.5 h-1.5 flex-shrink-0"
-                    style={{
-                      backgroundColor: PIE_COLORS[i % PIE_COLORS.length],
-                    }}
-                  />
-                  <span className="text-term-text-dim truncate">
-                    {d.name}
-                  </span>
-                  <span className="text-term-text-dim ml-auto flex-shrink-0">
-                    {d.value}K
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
+          <PieChartWithTooltip pieData={pieData} pieColors={PIE_COLORS} />
         )}
 
         {/* Top results */}
@@ -253,6 +218,13 @@ export default function ContextWaterfall({
   );
 }
 
+interface StackedBarTooltipData {
+  turn: string;
+  userText: number;
+  toolResults: number;
+  assistantOutput: number;
+}
+
 function StackedBarChart({
   width,
   height,
@@ -265,6 +237,20 @@ function StackedBarChart({
   const margin = { top: 10, right: 20, bottom: 30, left: 50 };
   const innerW = width - margin.left - margin.right;
   const innerH = height - margin.top - margin.bottom;
+
+  const {
+    tooltipData,
+    tooltipLeft,
+    tooltipTop,
+    tooltipOpen,
+    showTooltip,
+    hideTooltip,
+  } = useTooltip<StackedBarTooltipData>();
+
+  const { containerRef, TooltipInPortal } = useTooltipInPortal({
+    detectBounds: true,
+    scroll: true,
+  });
 
   const xScale = scaleBand({
     domain: data.map((d) => d.turn),
@@ -291,71 +277,207 @@ function StackedBarChart({
     range: STACK_COLORS,
   });
 
+  const handleBarHover = useCallback(
+    (event: React.MouseEvent<SVGRectElement>, d: Record<string, any>) => {
+      const point = localPoint(event);
+      if (!point) return;
+      showTooltip({
+        tooltipData: d as StackedBarTooltipData,
+        tooltipLeft: point.x,
+        tooltipTop: point.y,
+      });
+    },
+    [showTooltip]
+  );
+
   if (width < 100) return null;
 
   return (
-    <svg width={width} height={height}>
-      <Group left={margin.left} top={margin.top}>
-        <GridRows
-          scale={yScale}
-          width={innerW}
-          stroke="#1a1a1a"
-          strokeDasharray="2,3"
-        />
-        <BarStack
-          data={data}
-          keys={STACK_KEYS as unknown as string[]}
-          x={(d) => d.turn}
-          xScale={xScale}
-          yScale={yScale}
-          color={colorScale}
+    <div style={{ position: "relative" }}>
+      <svg ref={containerRef} width={width} height={height}>
+        <Group left={margin.left} top={margin.top}>
+          <GridRows
+            scale={yScale}
+            width={innerW}
+            stroke="#1a1a1a"
+            strokeDasharray="2,3"
+          />
+          <BarStack
+            data={data}
+            keys={STACK_KEYS as unknown as string[]}
+            x={(d) => d.turn}
+            xScale={xScale}
+            yScale={yScale}
+            color={colorScale}
+          >
+            {(barStacks) =>
+              barStacks.map((barStack) =>
+                barStack.bars.map((bar) => (
+                  <rect
+                    key={`bar-stack-${barStack.index}-${bar.index}`}
+                    x={bar.x}
+                    y={bar.y}
+                    height={bar.height}
+                    width={bar.width}
+                    fill={bar.color}
+                    fillOpacity={0.35}
+                    stroke={bar.color}
+                    strokeWidth={0.5}
+                    strokeOpacity={0.5}
+                    onMouseMove={(e: React.MouseEvent<SVGRectElement>) =>
+                      handleBarHover(e, data[bar.index])
+                    }
+                    onMouseLeave={hideTooltip}
+                  />
+                ))
+              )
+            }
+          </BarStack>
+          <AxisBottom
+            top={innerH}
+            scale={xScale}
+            stroke="#333"
+            tickStroke="#333"
+            tickLabelProps={{
+              fill: "#555",
+              fontSize: 9,
+              fontFamily: "monospace",
+              textAnchor: "middle",
+            }}
+          />
+          <AxisLeft
+            scale={yScale}
+            stroke="#333"
+            tickStroke="#333"
+            tickFormat={(v) => `${v}K`}
+            tickLabelProps={{
+              fill: "#555",
+              fontSize: 9,
+              fontFamily: "monospace",
+              textAnchor: "end",
+              dx: -4,
+            }}
+          />
+        </Group>
+      </svg>
+      {tooltipOpen && tooltipData && (
+        <TooltipInPortal
+          left={tooltipLeft}
+          top={tooltipTop}
+          style={tooltipStyles}
+          offsetLeft={10}
+          offsetTop={-10}
         >
-          {(barStacks) =>
-            barStacks.map((barStack) =>
-              barStack.bars.map((bar) => (
-                <rect
-                  key={`bar-stack-${barStack.index}-${bar.index}`}
-                  x={bar.x}
-                  y={bar.y}
-                  height={bar.height}
-                  width={bar.width}
-                  fill={bar.color}
-                  fillOpacity={0.35}
-                  stroke={bar.color}
-                  strokeWidth={0.5}
-                  strokeOpacity={0.5}
-                />
-              ))
-            )
-          }
-        </BarStack>
-        <AxisBottom
-          top={innerH}
-          scale={xScale}
-          stroke="#333"
-          tickStroke="#333"
-          tickLabelProps={{
-            fill: "#555",
-            fontSize: 9,
-            fontFamily: "monospace",
-            textAnchor: "middle",
-          }}
-        />
-        <AxisLeft
-          scale={yScale}
-          stroke="#333"
-          tickStroke="#333"
-          tickFormat={(v) => `${v}K`}
-          tickLabelProps={{
-            fill: "#555",
-            fontSize: 9,
-            fontFamily: "monospace",
-            textAnchor: "end",
-            dx: -4,
-          }}
-        />
-      </Group>
-    </svg>
+          <div>Turn {tooltipData.turn}</div>
+          <div style={{ color: "#00ff88" }}>
+            userText: {tooltipData.userText}KB
+          </div>
+          <div style={{ color: "#ffaa00" }}>
+            toolResults: {tooltipData.toolResults}KB
+          </div>
+          <div style={{ color: "#00aaff" }}>
+            assistantOutput: {tooltipData.assistantOutput}KB
+          </div>
+        </TooltipInPortal>
+      )}
+    </div>
+  );
+}
+
+function PieChartWithTooltip({
+  pieData,
+  pieColors,
+}: {
+  pieData: { name: string; value: number }[];
+  pieColors: string[];
+}) {
+  const {
+    tooltipData,
+    tooltipLeft,
+    tooltipTop,
+    tooltipOpen,
+    showTooltip,
+    hideTooltip,
+  } = useTooltip<{ name: string; value: number }>();
+
+  const { containerRef, TooltipInPortal } = useTooltipInPortal({
+    detectBounds: true,
+    scroll: true,
+  });
+
+  return (
+    <div className="border border-term-border bg-term-surface p-4">
+      <h3 className="text-xs text-term-text-dim font-mono mb-3">
+        context by tool
+      </h3>
+      <div className="flex justify-center" style={{ position: "relative" }}>
+        <svg ref={containerRef} width={240} height={240}>
+          <Group top={120} left={120}>
+            <Pie
+              data={pieData}
+              pieValue={(d) => d.value}
+              outerRadius={100}
+              innerRadius={40}
+              padAngle={0.02}
+            >
+              {(pie) =>
+                pie.arcs.map((arc, i) => (
+                  <g key={arc.data.name}>
+                    <path
+                      d={pie.path(arc) || ""}
+                      fill={pieColors[i % pieColors.length]}
+                      fillOpacity={0.5}
+                      stroke={pieColors[i % pieColors.length]}
+                      strokeWidth={0.5}
+                      onMouseMove={(e: React.MouseEvent<SVGPathElement>) => {
+                        const point = localPoint(e);
+                        if (!point) return;
+                        showTooltip({
+                          tooltipData: arc.data,
+                          tooltipLeft: point.x,
+                          tooltipTop: point.y,
+                        });
+                      }}
+                      onMouseLeave={hideTooltip}
+                    />
+                  </g>
+                ))
+              }
+            </Pie>
+          </Group>
+        </svg>
+        {tooltipOpen && tooltipData && (
+          <TooltipInPortal
+            left={tooltipLeft}
+            top={tooltipTop}
+            style={tooltipStyles}
+            offsetLeft={10}
+            offsetTop={-10}
+          >
+            <div>{tooltipData.name}</div>
+            <div>{tooltipData.value}KB</div>
+          </TooltipInPortal>
+        )}
+      </div>
+      <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 mt-2 text-[10px] font-mono">
+        {pieData.map((d, i) => (
+          <div key={d.name} className="flex items-center gap-1.5">
+            <div
+              className="w-1.5 h-1.5 flex-shrink-0"
+              style={{
+                backgroundColor: pieColors[i % pieColors.length],
+              }}
+            />
+            <span className="text-term-text-dim truncate">
+              {d.name}
+            </span>
+            <span className="text-term-text-dim ml-auto flex-shrink-0">
+              {d.value}K
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 

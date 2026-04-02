@@ -1,10 +1,24 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { Group } from "@visx/group";
 import { Bar } from "@visx/shape";
 import { scaleLinear, scaleBand } from "@visx/scale";
 import { AxisLeft, AxisBottom } from "@visx/axis";
 import { ParentSize } from "@visx/responsive";
+import { useTooltip, useTooltipInPortal, defaultStyles } from "@visx/tooltip";
+import { localPoint } from "@visx/event";
 import ToolCallDetail from "./ToolCallDetail.js";
+
+const tooltipStyles = {
+  ...defaultStyles,
+  background: "#111",
+  border: "1px solid #333",
+  color: "#b0b0b0",
+  fontSize: 10,
+  fontFamily: "monospace",
+  padding: "6px 8px",
+  borderRadius: 0,
+  boxShadow: "0 2px 8px rgba(0,0,0,0.8)",
+} as const;
 
 interface ToolCall {
   id: string;
@@ -132,6 +146,7 @@ export default function ToolCallTable({
                 height={Math.max(120, countByName.length * 22 + 40)}
                 data={countByName.map((d) => ({
                   label: d.name.length > 22 ? d.name.slice(0, 22) + ".." : d.name,
+                  fullLabel: d.name,
                   value: d.count,
                 }))}
                 color="#00aaff"
@@ -150,6 +165,7 @@ export default function ToolCallTable({
                 height={Math.max(120, sizeByName.length * 22 + 40)}
                 data={sizeByName.map((d) => ({
                   label: d.name.length > 22 ? d.name.slice(0, 22) + ".." : d.name,
+                  fullLabel: d.name,
                   value: d.kb,
                 }))}
                 color="#ffaa00"
@@ -248,12 +264,26 @@ function HBarChart({
 }: {
   width: number;
   height: number;
-  data: { label: string; value: number }[];
+  data: { label: string; fullLabel: string; value: number }[];
   color: string;
 }) {
   const margin = { top: 4, right: 30, bottom: 4, left: 120 };
   const innerW = width - margin.left - margin.right;
   const innerH = height - margin.top - margin.bottom;
+
+  const {
+    tooltipData,
+    tooltipLeft,
+    tooltipTop,
+    tooltipOpen,
+    showTooltip,
+    hideTooltip,
+  } = useTooltip<{ fullLabel: string; value: number }>();
+
+  const { containerRef, TooltipInPortal } = useTooltipInPortal({
+    detectBounds: true,
+    scroll: true,
+  });
 
   const yScale = scaleBand({
     domain: data.map((d) => d.label),
@@ -267,50 +297,81 @@ function HBarChart({
     nice: true,
   });
 
+  const handleBarHover = useCallback(
+    (event: React.MouseEvent<SVGRectElement>, d: { fullLabel: string; value: number }) => {
+      const point = localPoint(event);
+      if (!point) return;
+      showTooltip({
+        tooltipData: d,
+        tooltipLeft: point.x,
+        tooltipTop: point.y,
+      });
+    },
+    [showTooltip]
+  );
+
   if (width < 100) return null;
 
   return (
-    <svg width={width} height={height}>
-      <Group left={margin.left} top={margin.top}>
-        {data.map((d) => (
-          <g key={d.label}>
-            <Bar
-              x={0}
-              y={yScale(d.label)!}
-              width={Math.max(0, xScale(d.value))}
-              height={yScale.bandwidth()}
-              fill={color}
-              fillOpacity={0.4}
-              stroke={color}
-              strokeWidth={0.5}
-              strokeOpacity={0.6}
-            />
-            <text
-              x={xScale(d.value) + 4}
-              y={yScale(d.label)! + yScale.bandwidth() / 2}
-              dy="0.35em"
-              fill="#555"
-              fontSize={9}
-              fontFamily="monospace"
-            >
-              {d.value}
-            </text>
-          </g>
-        ))}
-        <AxisLeft
-          scale={yScale}
-          stroke="transparent"
-          tickStroke="transparent"
-          tickLabelProps={{
-            fill: "#555",
-            fontSize: 9,
-            fontFamily: "monospace",
-            textAnchor: "end",
-            dx: -4,
-          }}
-        />
-      </Group>
-    </svg>
+    <div style={{ position: "relative" }}>
+      <svg ref={containerRef} width={width} height={height}>
+        <Group left={margin.left} top={margin.top}>
+          {data.map((d) => (
+            <g key={d.label}>
+              <Bar
+                x={0}
+                y={yScale(d.label)!}
+                width={Math.max(0, xScale(d.value))}
+                height={yScale.bandwidth()}
+                fill={color}
+                fillOpacity={0.4}
+                stroke={color}
+                strokeWidth={0.5}
+                strokeOpacity={0.6}
+                onMouseMove={(e: React.MouseEvent<SVGRectElement>) =>
+                  handleBarHover(e, { fullLabel: d.fullLabel, value: d.value })
+                }
+                onMouseLeave={hideTooltip}
+              />
+              <text
+                x={xScale(d.value) + 4}
+                y={yScale(d.label)! + yScale.bandwidth() / 2}
+                dy="0.35em"
+                fill="#555"
+                fontSize={9}
+                fontFamily="monospace"
+              >
+                {d.value}
+              </text>
+            </g>
+          ))}
+          <AxisLeft
+            scale={yScale}
+            stroke="transparent"
+            tickStroke="transparent"
+            tickLabelProps={{
+              fill: "#555",
+              fontSize: 9,
+              fontFamily: "monospace",
+              textAnchor: "end",
+              dx: -4,
+            }}
+          />
+        </Group>
+      </svg>
+      {tooltipOpen && tooltipData && (
+        <TooltipInPortal
+          left={tooltipLeft}
+          top={tooltipTop}
+          style={tooltipStyles}
+          offsetLeft={10}
+          offsetTop={-10}
+        >
+          <div>{tooltipData.fullLabel}</div>
+          <div>{tooltipData.value.toLocaleString()}</div>
+        </TooltipInPortal>
+      )}
+    </div>
   );
 }
 

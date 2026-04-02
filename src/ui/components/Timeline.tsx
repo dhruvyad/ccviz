@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 
 interface Turn {
   index: number;
@@ -25,17 +25,35 @@ interface TimelineProps {
   turns: Turn[];
 }
 
+function getHeatColor(ratio: number): string {
+  // 0 = green, 0.5 = yellow, 1.0 = red
+  const r = ratio < 0.5 ? Math.round(255 * (ratio * 2)) : 255;
+  const g = ratio < 0.5 ? 255 : Math.round(255 * (1 - (ratio - 0.5) * 2));
+  return `rgb(${r}, ${g}, 0)`;
+}
+
 export default function Timeline({ turns }: TimelineProps) {
+  const maxTokens = useMemo(() => {
+    if (turns.length === 0) return 1;
+    return Math.max(
+      ...turns.map(
+        (t) =>
+          t.assistantMessage.usage.inputTokens +
+          t.assistantMessage.usage.outputTokens
+      )
+    );
+  }, [turns]);
+
   return (
     <div className="space-y-1">
       {turns.map((turn) => (
-        <TurnCard key={turn.index} turn={turn} />
+        <TurnCard key={turn.index} turn={turn} maxTokens={maxTokens} />
       ))}
     </div>
   );
 }
 
-function TurnCard({ turn }: { turn: Turn }) {
+function TurnCard({ turn, maxTokens }: { turn: Turn; maxTokens: number }) {
   const [expandUser, setExpandUser] = useState(false);
   const [expandAssistant, setExpandAssistant] = useState(false);
 
@@ -53,8 +71,17 @@ function TurnCard({ turn }: { turn: Turn }) {
     return "border-term-border bg-term-surface";
   };
 
+  const totalTokens =
+    turn.assistantMessage.usage.inputTokens +
+    turn.assistantMessage.usage.outputTokens;
+  const heatRatio = maxTokens > 0 ? totalTokens / maxTokens : 0;
+  const heatColor = getHeatColor(heatRatio);
+
   return (
-    <div className="border border-term-border hover:border-term-border-hi transition-colors">
+    <div
+      className="border border-term-border hover:border-term-border-hi transition-colors"
+      style={{ borderLeftWidth: 3, borderLeftColor: heatColor }}
+    >
       {/* Header */}
       <div className="flex items-center justify-between px-3 py-1.5 border-b border-term-border/50 bg-term-surface">
         <span className="text-[10px] font-mono text-term-text-dim">
