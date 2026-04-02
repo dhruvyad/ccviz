@@ -24,7 +24,7 @@ export function createServer({ claudeDir, isDev }: ServerOptions) {
   if (!isDev) {
     const uiDir = path.join(__dirname, "ui");
     app.use(express.static(uiDir));
-    app.get("*", (_req, res) => {
+    app.get("/{*splat}", (_req, res) => {
       res.sendFile(path.join(uiDir, "index.html"));
     });
   }

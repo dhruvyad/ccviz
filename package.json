@@ -6,9 +6,10 @@
   "bin": {
     "ccviz": "dist/cli.js"
   },
+  "files": ["dist/"],
   "scripts": {
     "dev": "concurrently \"tsx watch src/cli.ts -- --dev\" \"vite --config src/ui/vite.config.ts\"",
-    "build": "tsup src/cli.ts src/server/index.ts --format esm --out-dir dist --clean && vite build --config src/ui/vite.config.ts",
+    "build": "tsup && vite build --config src/ui/vite.config.ts",
     "start": "node dist/cli.js"
   },
   "keywords": ["claude", "claude-code", "visualization", "mcp"],
